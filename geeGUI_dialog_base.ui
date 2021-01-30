@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>707</width>
-    <height>530</height>
+    <width>706</width>
+    <height>531</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -19,12 +19,18 @@
      <x>-10</x>
      <y>0</y>
      <width>721</width>
-     <height>541</height>
+     <height>611</height>
     </rect>
    </property>
-   <layout class="QHBoxLayout" name="horizontalLayout">
+   <layout class="QHBoxLayout" name="baseLayout">
+    <property name="leftMargin">
+     <number>10</number>
+    </property>
+    <property name="topMargin">
+     <number>0</number>
+    </property>
     <item>
-     <widget class="QListWidget" name="listWidget">
+     <widget class="QListWidget" name="menu">
       <property name="minimumSize">
        <size>
         <width>0</width>
@@ -206,7 +212,8 @@
       <property name="styleSheet">
        <string notr="true">background-color: rgb(61, 61, 61);
 font: 11pt &quot;T1_131&quot;;
-color: rgb(238, 238, 238);</string>
+color: rgb(238, 238, 238);
+padding: 10px;</string>
       </property>
       <property name="editTriggers">
        <set>QAbstractItemView::DoubleClicked|QAbstractItemView::SelectedClicked</set>
@@ -267,15 +274,14 @@ color: rgb(238, 238, 238);</string>
         <string/>
        </property>
        <property name="textAlignment">
-        <set>AlignLeading|AlignVCenter</set>
+        <set>AlignJustify|AlignVCenter</set>
+       </property>
+       <property name="icon">
+        <iconset>
+         <normaloff>:/plugins/geegui/icons/download.png</normaloff>:/plugins/geegui/icons/download.png</iconset>
        </property>
        <property name="flags">
         <set>ItemIsSelectable|ItemIsEnabled</set>
-       </property>
-      </item>
-      <item>
-       <property name="text">
-        <string>Govno</string>
        </property>
       </item>
       <item>
@@ -285,21 +291,33 @@ color: rgb(238, 238, 238);</string>
        <property name="textAlignment">
         <set>AlignLeading|AlignVCenter</set>
        </property>
+       <property name="icon">
+        <iconset>
+         <normaloff>:/plugins/geegui/icons/Transform.png</normaloff>:/plugins/geegui/icons/Transform.png</iconset>
+       </property>
       </item>
       <item>
        <property name="text">
         <string>  Estimate indices</string>
+       </property>
+       <property name="icon">
+        <iconset>
+         <normaloff>:/plugins/geegui/icons/ndvi.png</normaloff>:/plugins/geegui/icons/ndvi.png</iconset>
        </property>
       </item>
       <item>
        <property name="text">
         <string>  Export</string>
        </property>
+       <property name="icon">
+        <iconset>
+         <normaloff>:/plugins/geegui/icons/export.png</normaloff>:/plugins/geegui/icons/export.png</iconset>
+       </property>
       </item>
      </widget>
     </item>
     <item>
-     <widget class="QWidget" name="widget" native="true">
+     <widget class="QWidget" name="base_window" native="true">
       <property name="minimumSize">
        <size>
         <width>500</width>

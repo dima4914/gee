@@ -33,6 +33,24 @@ from qgis.PyQt import QtWidgets
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'geeGUI_dialog_base.ui'))
+KERNEL_CLASS, _ = uic.loadUiType(os.path.join(
+    os.path.dirname(__file__), 'kernelGUI.ui'))
+DOWNLOAD_CLASS, _ = uic.loadUiType(os.path.join(
+    os.path.dirname(__file__), 'downloadGUI.ui'))
+
+
+class KernelDialog(QtWidgets.QWidget, KERNEL_CLASS):
+    def __init__(self, parent=None):
+        """Constructor."""
+        super(KernelDialog, self).__init__(parent)
+        self.setupUi(self)
+
+
+class DownloadDialog(QtWidgets.QWidget, DOWNLOAD_CLASS):
+    def __init__(self, parent=None):
+        """Constructor."""
+        super(DownloadDialog, self).__init__(parent)
+        self.setupUi(self)
 
 
 class GEEManagerDialog(QtWidgets.QDialog, FORM_CLASS):
@@ -45,3 +63,16 @@ class GEEManagerDialog(QtWidgets.QDialog, FORM_CLASS):
         # http://qt-project.org/doc/qt-4.8/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
+        self.panels = {
+            '  Download dataset': DownloadDialog(),
+            '  Apply kernels': KernelDialog(),
+            '  Estimate indices': DownloadDialog(),
+            '  Export': KernelDialog()
+        }
+        self.stackLayout = QtWidgets.QStackedLayout()
+        self.base_window.setLayout(self.stackLayout)
+        for i in self.panels:
+            self.stackLayout.addWidget(self.panels[i])
+        self.stackLayout.setCurrentIndex(0)
+        self.menu.itemClicked.connect(lambda x: self.stackLayout.setCurrentWidget(self.panels[x.text()]))
+

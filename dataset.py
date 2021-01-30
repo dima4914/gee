@@ -126,6 +126,3 @@ gee_dataset = {
         'type': ee.Image
     }
 }
-
-print(gee_dataset)
-print(len(gee_dataset.keys()))
