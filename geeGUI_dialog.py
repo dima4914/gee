@@ -27,6 +27,7 @@ import sys
 
 from qgis.PyQt import uic
 from qgis.PyQt import QtWidgets
+#import .basic
 #from .geeGUI_dialog_base import Ui_GEEManagerDialogBase as FORM_CLASS
 
 #sys.path.append(os.path.dirname(__file__))
