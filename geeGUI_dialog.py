@@ -27,7 +27,9 @@ import sys
 
 from qgis.PyQt import uic
 from qgis.PyQt import QtWidgets
-#import .basic
+from .dataset import gee_dataset
+from .basic import *
+
 #from .geeGUI_dialog_base import Ui_GEEManagerDialogBase as FORM_CLASS
 
 #sys.path.append(os.path.dirname(__file__))
@@ -38,6 +40,8 @@ KERNEL_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'kernelGUI.ui'))
 DOWNLOAD_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'downloadGUI.ui'))
+EXPORT_CLASS, _ = uic.loadUiType(os.path.join(
+    os.path.dirname(__file__), 'exportGUI.ui'))
 
 
 class KernelDialog(QtWidgets.QWidget, KERNEL_CLASS):
@@ -52,6 +56,82 @@ class DownloadDialog(QtWidgets.QWidget, DOWNLOAD_CLASS):
         """Constructor."""
         super(DownloadDialog, self).__init__(parent)
         self.setupUi(self)
+        datasets = gee_dataset.keys()
+        self.datasets.addItems(datasets)
+        self.datasets.editTextChanged.connect(self.on_dataset_selected)
+        self.manager = PreprocessingEE('','')
+        self.bands = [self.B1, self.B2, self.B3]
+        self.on_dataset_selected(tuple(datasets)[0])
+
+        self.num_bands = 3
+        self.bandButtonGroup = QtWidgets.QButtonGroup()
+        self.bandButtonGroup.addButton(self.radio1, 1)
+        self.bandButtonGroup.addButton(self.radio3, 2)
+        self.bandButtonGroup.buttonClicked.connect(self.set_number_of_bands)
+        self.loadButton.clicked.connect(self.load)
+
+    def set_number_of_bands(self, obj):
+        id = self.bandButtonGroup.id(obj)
+        if id==1:
+            self.bands[0].setEnabled(True)
+            for band in self.bands[1:]:
+                band.setDisabled(True)
+            self.num_bands = 1
+        elif id ==2:
+            for band in self.bands:
+                band.setEnabled(True)
+            self.num_bands = 3
+
+    def clear(self):
+        for band in self.bands:
+            band.clear()
+        self.desc.clear()
+
+    def on_dataset_selected(self, text):
+        self.clear()
+        if text in gee_dataset:
+            data = gee_dataset[text]
+            for band in self.bands:
+                band.addItems(data['bands'])
+            self.desc.setText(data['desc'])
+
+    def load(self):
+        start_date = self.dateStart.date().toPyDate()
+        end_date = self.dateEnd.date().toPyDate()
+        cloud = self.cloudBox.value()
+        limit = self.limitBox.value()
+        dataset = self.datasets.currentText()
+        bands = []
+        for i in range(self.num_bands):
+            bands.append(self.bands[i].currentText())
+        self.manager.set_date_range(start_date, end_date)
+        self.manager.set_cloud(cloud)
+        self.manager.set_limit(limit)
+        geom = get_selected_gee()
+        if geom: geom = geom[0]
+        self.manager.import_e(dataset, bands, geom, dataset)
+
+
+class ExportDialog(QtWidgets.QWidget, EXPORT_CLASS):
+    def __init__(self, parent=None):
+        """Constructor."""
+        super(ExportDialog, self).__init__(parent)
+        self.setupUi(self)
+        self.exportButton.clicked.connect(self.on_export)
+        self.manager = ExportingEE()
+
+    def on_layers_update(self):
+        self.layerBox.clear()
+        self.layerBox.addItems(self.manager.layers.names())
+
+    def on_export(self):
+        layer = self.layerBox.currentText()
+        scale = self.scaleBox.value()
+        pix = float(self.pixBox.text())
+        folder = self.folder.text()
+        geom = get_selected_gee()
+        if geom: geom = geom[0]
+        self.manager.export_e(layer, scale, pix, folder=folder, geometry=geom)
 
 
 class GEEManagerDialog(QtWidgets.QDialog, FORM_CLASS):
@@ -64,16 +144,26 @@ class GEEManagerDialog(QtWidgets.QDialog, FORM_CLASS):
         # http://qt-project.org/doc/qt-4.8/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
+        self.export = ExportDialog()
         self.panels = {
             '  Download dataset': DownloadDialog(),
             '  Apply kernels': KernelDialog(),
             '  Estimate indices': DownloadDialog(),
-            '  Export': KernelDialog()
+            '  Export': self.export,
+            '  Settings': ExportDialog()
         }
         self.stackLayout = QtWidgets.QStackedLayout()
         self.base_window.setLayout(self.stackLayout)
         for i in self.panels:
             self.stackLayout.addWidget(self.panels[i])
         self.stackLayout.setCurrentIndex(0)
-        self.menu.itemClicked.connect(lambda x: self.stackLayout.setCurrentWidget(self.panels[x.text()]))
+        self.menu.itemClicked.connect(self.turn_panel)
+
+    def turn_panel(self, x):
+        self.stackLayout.setCurrentWidget(self.panels[x.text()])
+        self.update_layers_info()
+
+    def update_layers_info(self):
+        "syncronize information about changing layers between all panels"
+        self.export.on_layers_update()
 

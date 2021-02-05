@@ -213,7 +213,10 @@
        <string notr="true">background-color: rgb(61, 61, 61);
 font: 11pt &quot;T1_131&quot;;
 color: rgb(238, 238, 238);
-padding: 10px;</string>
+padding: 15px;</string>
+      </property>
+      <property name="sizeAdjustPolicy">
+       <enum>QAbstractScrollArea::AdjustIgnored</enum>
       </property>
       <property name="editTriggers">
        <set>QAbstractItemView::DoubleClicked|QAbstractItemView::SelectedClicked</set>
@@ -240,12 +243,12 @@ padding: 10px;</string>
        <enum>QListView::SinglePass</enum>
       </property>
       <property name="spacing">
-       <number>10</number>
+       <number>15</number>
       </property>
       <property name="gridSize">
        <size>
         <width>0</width>
-        <height>45</height>
+        <height>50</height>
        </size>
       </property>
       <property name="viewMode">
@@ -312,6 +315,15 @@ padding: 10px;</string>
        <property name="icon">
         <iconset>
          <normaloff>:/plugins/geegui/icons/export.png</normaloff>:/plugins/geegui/icons/export.png</iconset>
+       </property>
+      </item>
+      <item>
+       <property name="text">
+        <string>  Settings</string>
+       </property>
+       <property name="icon">
+        <iconset>
+         <normaloff>:/plugins/geegui/icons/settings2.png</normaloff>:/plugins/geegui/icons/settings2.png</iconset>
        </property>
       </item>
      </widget>
