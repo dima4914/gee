@@ -47,17 +47,19 @@ class LayerManager:
     def __init__(self):
         self.layers = {}
 
-    def subscript_layer(self, image_name, layer_name, image, info=None):
+    def subscript_layer(self, image_name, layer_name, image, vis, info=None):
         qgs_layer = iface.activeLayer()
         if not info:
             info = image.getInfo()
-        del info['properties']['description']
+        if info['properties'].get('description',''):
+            del info['properties']['description'] # for saving memory
         res = {
             layer_name: {
                 'gee_id': image_name, #for fast retreiving bands from dataset
                 'meta': info,
                 'obj': image,
-                'qgs_layer': qgs_layer #to manipulate layer with qgis interface
+                'qgs_layer': qgs_layer,#to manipulate layer with qgis interface
+                'vis': vis
             }
         }
         self.layers.update(res)
@@ -71,6 +73,9 @@ class LayerManager:
 
     def names(self):
         return self.layers.keys()
+
+    def vis_params(self, layer_name):
+        return self[layer_name]['vis']
 
 _layers = LayerManager()#shared by several classes, needed to be global but is non-importing
 
@@ -91,6 +96,7 @@ class PreprocessingEE:
     def import_e(self,image_name, bands, geometry=None, layer_name='gee_data'):
         """Imports collection or single image to the gis with visual parameters,
         Important news: less settings and saving layer information with qgis layer name for furthering computations"""
+        visParams = {'bands': bands}  # !!! change while refactoring
         if image_name in gee_dataset:
             type_ = gee_dataset[image_name]['type']#we can't know if it's collection or single image, trying to define
             image = type_(image_name)
@@ -101,11 +107,13 @@ class PreprocessingEE:
                 if self.limit: image = image.limit(self.limit)
         else:
             image = ee.Image(image_name)#then support only Images(temporaly)
+
         info = image.getInfo()
-        visParams = {'bands': bands} #    !!! change while refactoring
+
         if len(bands) == 1: visParams.update({'palette': self.palette})
-        Map.addLayer(image.mosaic(), visParams, layer_name, True)#ee_plugin doesn't support adding image collections, can make mosaic instead
-        self.layers.subscript_layer(image_name, layer_name, image, info)  # here we merge qgis and gee layer information
+        torender = image.mosaic() if isinstance(image,ee.ImageCollection) else image
+        Map.addLayer(torender, visParams, layer_name, True)#ee_plugin doesn't support adding image collections, can make mosaic instead
+        self.layers.subscript_layer(image_name, layer_name, image, visParams, info)  # here we merge qgis and gee layer information
         return image
 
     def search_property(self, info, base='CLOUD'):
@@ -114,7 +122,6 @@ class PreprocessingEE:
         for attr in meta:
             if base.lower() in attr.lower():
                 return attr
-
 
     def process_clouding(self, collection, info=None, name=None):
         "filter by cloudiness, if name of property is not given, then try to find it itself"
@@ -147,19 +154,34 @@ class ExportingEE:
     def __init__(self):
         self.layers = _layers
 
-    def export_e(self, layer_name, scale, max_pixels=1e9, format_='GeoTIFF', folder = 'GEE_Data', geometry=None, verbose=True):
+    @exception_as_gui
+    def export_e(self,  layer_name, scale, max_pixels=1e9, format_='GeoTIFF', folder = 'GEE_Data',
+                 pyramid='mean', geometry=None, dest='drive',verbose=True):
         image = self.layers[layer_name]['obj']
-        if isinstance(image, ee.ImageCollection): image=image.median()
+        visParams = self.layers.vis_params(layer_name)
+        segments = layer_name.split('/')
+        if segments[0] == 'users' and segments[1].startswith('st'):
+            desc = '_'.join(segments[2:])
+        else:
+            desc = layer_name.replace('/', '_')
+        if isinstance(image, ee.ImageCollection):
+            imageRGB = image.map(lambda img: img.visualize(**visParams).copyProperties(img, img.propertyNames())).median()
+        else:
+            imageRGB = image.visualize(**visParams)
         settings = {
-            'image': image,
+            'image': imageRGB,
             'scale': scale,
-            'description': layer_name.replace('/', '_'),
-            'fileFormat': format_,
-            'folder': folder,
+            'description': desc,
             'maxPixels': max_pixels
         }
+        if dest == 'asset':
+            settings.update({'assetId': folder+'/'+desc,
+                             'pyramidingPolicy': {'.default': pyramid}})
+            task = ee.batch.Export.image.toAsset(**settings)
+        else:
+            settings.update({'folder': folder, 'fileFormat': format_,})
+            task = ee.batch.Export.image.toDrive(**settings)
         if geometry: settings.update({'region': geometry})
-        task = ee.batch.Export.image.toDrive(**settings)
         task.start = exec_til_success(ProtocolError, NUM_TILL_SUCCESS)(task.start)
         task.start()
         if verbose:

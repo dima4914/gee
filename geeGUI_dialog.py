@@ -29,6 +29,7 @@ from qgis.PyQt import uic
 from qgis.PyQt import QtWidgets
 from .dataset import gee_dataset
 from .basic import *
+import webbrowser
 
 #from .geeGUI_dialog_base import Ui_GEEManagerDialogBase as FORM_CLASS
 
@@ -42,6 +43,14 @@ DOWNLOAD_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'downloadGUI.ui'))
 EXPORT_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'exportGUI.ui'))
+
+
+def set_radio_group(radio1, radio2, func):
+    buttonGroup = QtWidgets.QButtonGroup()
+    buttonGroup.addButton(radio1, 1)
+    buttonGroup.addButton(radio2, 2)
+    buttonGroup.buttonClicked.connect(func)
+    return buttonGroup
 
 
 class KernelDialog(QtWidgets.QWidget, KERNEL_CLASS):
@@ -64,10 +73,7 @@ class DownloadDialog(QtWidgets.QWidget, DOWNLOAD_CLASS):
         self.on_dataset_selected(tuple(datasets)[0])
 
         self.num_bands = 3
-        self.bandButtonGroup = QtWidgets.QButtonGroup()
-        self.bandButtonGroup.addButton(self.radio1, 1)
-        self.bandButtonGroup.addButton(self.radio3, 2)
-        self.bandButtonGroup.buttonClicked.connect(self.set_number_of_bands)
+        self.bandButtonGroup = set_radio_group(self.radio1, self.radio3, self.set_number_of_bands)
         self.loadButton.clicked.connect(self.load)
 
     def set_number_of_bands(self, obj):
@@ -101,6 +107,7 @@ class DownloadDialog(QtWidgets.QWidget, DOWNLOAD_CLASS):
         cloud = self.cloudBox.value()
         limit = self.limitBox.value()
         dataset = self.datasets.currentText()
+        name = self.layerName.text()
         bands = []
         for i in range(self.num_bands):
             bands.append(self.bands[i].currentText())
@@ -109,7 +116,7 @@ class DownloadDialog(QtWidgets.QWidget, DOWNLOAD_CLASS):
         self.manager.set_limit(limit)
         geom = get_selected_gee()
         if geom: geom = geom[0]
-        self.manager.import_e(dataset, bands, geom, dataset)
+        self.manager.import_e(dataset, bands, geom, name)
 
 
 class ExportDialog(QtWidgets.QWidget, EXPORT_CLASS):
@@ -119,19 +126,36 @@ class ExportDialog(QtWidgets.QWidget, EXPORT_CLASS):
         self.setupUi(self)
         self.exportButton.clicked.connect(self.on_export)
         self.manager = ExportingEE()
+        self.exportButtonGroup = set_radio_group(self.driveRadio, self.assetRadio, self.toggle_mode)
+        self.exportButtonGroup.buttonClicked.emit(self.driveRadio)
+        self.toCE.clicked.connect(lambda: webbrowser.open('https://code.earthengine.google.com/',
+                                                          new=2))
+        self.mode = 'drive'
 
     def on_layers_update(self):
         self.layerBox.clear()
         self.layerBox.addItems(self.manager.layers.names())
+
+    def toggle_mode(self, obj):
+        id = self.exportButtonGroup.id(obj)
+        if id==1:
+            self.pyramidBox.hide()
+            self.asset_label.hide()
+            self.mode = 'drive'
+        elif id==2:
+            self.pyramidBox.show()
+            self.asset_label.show()
+            self.mode = 'asset'
 
     def on_export(self):
         layer = self.layerBox.currentText()
         scale = self.scaleBox.value()
         pix = float(self.pixBox.text())
         folder = self.folder.text()
+        pyramid = self.pyramidBox.currentText()
         geom = get_selected_gee()
         if geom: geom = geom[0]
-        self.manager.export_e(layer, scale, pix, folder=folder, geometry=geom)
+        self.manager.export_e(layer, scale, pix, folder=folder, pyramid=pyramid, geometry=geom, dest=self.mode)
 
 
 class GEEManagerDialog(QtWidgets.QDialog, FORM_CLASS):
