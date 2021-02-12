@@ -7,6 +7,9 @@ from qgis.core import *
 from PyQt5 import QtCore, QtWidgets
 import datetime as dt
 import json
+import os
+import zipfile
+import urllib
 
 NUM_TILL_SUCCESS = 3
 
@@ -41,6 +44,8 @@ def exception_as_gui(func):
 Map.addLayer = exec_til_success(ProtocolError, NUM_TILL_SUCCESS)(Map.addLayer)
 ee.Image.getInfo = exec_til_success(ProtocolError, NUM_TILL_SUCCESS)(ee.Image.getInfo)
 ee.ImageCollection.getInfo = exec_til_success(ProtocolError, NUM_TILL_SUCCESS)(ee.ImageCollection.getInfo)
+ee.FeatureCollection.getInfo = exec_til_success(ProtocolError, NUM_TILL_SUCCESS)(ee.FeatureCollection.getInfo)
+ee.FeatureCollection.getDownloadURL = exec_til_success(ProtocolError, NUM_TILL_SUCCESS)(ee.FeatureCollection.getDownloadURL)
 
 
 class LayerManager:
@@ -82,21 +87,20 @@ _layers = LayerManager()#shared by several classes, needed to be global but is n
 
 class PreprocessingEE:
     "Realizes base functions of preparing images for further processing: importing, sorting, filtering, extracting etc"
-    def __init__(self, start_date, end_date, limit=10, cloud = 20, palette=['black', 'white']):
+    def __init__(self, start_date, end_date, limit=10, cloud = 20):
         if isinstance(start_date, dt.date): start_date = start_date.strftime('%Y-%m-%d')
         if isinstance(end_date, dt.date): end_date = end_date.strftime('%Y-%m-%d')
         self.start = ee.Date(start_date)
         self.end = ee.Date(end_date)
         self.limit = limit
-        self.palette = palette
         self.layers = _layers#format: layer id in qgis: {'id': unique gee id used in import , 'meta': information, can have properties, 'obj': ee.Object
         self.cloud = cloud
+        self.vis_params = {}
 
     @exception_as_gui
-    def import_e(self,image_name, bands, geometry=None, layer_name='gee_data'):
+    def import_e(self,image_name, geometry=None, layer_name='gee_data'):
         """Imports collection or single image to the gis with visual parameters,
         Important news: less settings and saving layer information with qgis layer name for furthering computations"""
-        visParams = {'bands': bands}  # !!! change while refactoring
         if image_name in gee_dataset:
             type_ = gee_dataset[image_name]['type']#we can't know if it's collection or single image, trying to define
             image = type_(image_name)
@@ -110,10 +114,10 @@ class PreprocessingEE:
 
         info = image.getInfo()
 
-        if len(bands) == 1: visParams.update({'palette': self.palette})
+        #if len(bands) == 1: visParams.update({'palette': self.palette})
         torender = image.mosaic() if isinstance(image,ee.ImageCollection) else image
-        Map.addLayer(torender, visParams, layer_name, True)#ee_plugin doesn't support adding image collections, can make mosaic instead
-        self.layers.subscript_layer(image_name, layer_name, image, visParams, info)  # here we merge qgis and gee layer information
+        Map.addLayer(torender, self.vis_params, layer_name, True)#ee_plugin doesn't support adding image collections, can make mosaic instead
+        self.layers.subscript_layer(image_name, layer_name, image, self.vis_params, info)  # here we merge qgis and gee layer information
         return image
 
     def search_property(self, info, base='CLOUD'):
@@ -146,8 +150,8 @@ class PreprocessingEE:
         self.start = ee.Date(start) if start else self.start
         self.end = ee.Date(end) if end else self.end
 
-    def set_pallete(self, pallete):
-        self.pallete = pallete
+    def set_vis(self, vis):
+        self.vis_params = vis
 
 
 class ExportingEE:
@@ -226,6 +230,135 @@ def qgsgeometry_to_gee(geom, crs="EPSG:4326"):
     coords = info['coordinates']
     gee_object = eval(f"ee.Geometry.{info['type']}({coords}, '{crs}')")
     return gee_object
+
+
+def qgsfeature_to_gee(feature, crs="EPSG:4326"):
+    geom_ee = qgsgeometry_to_gee(feature.geometry(), crs) if feature.hasGeometry() else None
+    field_names = feature.fields().names()
+    values = feature.attributes()
+    props = dict(zip(field_names, values))
+    if 'id' not in field_names:
+        props.update({'id': feature.id()})
+    return ee.Feature(geom_ee, props)
+
+
+def qgsvector_to_gee(layer, expression='', limit=0):
+    crs = f'EPSG:{layer.sourceCrs().postgisSrid()}'
+    collection = []
+    request = QgsFeatureRequest()
+    if expression:
+        request = request.setFilterExpression(expression)
+    if limit:
+        request.setLimit(limit)
+    for feature in layer.getFeatures(request):
+        collection.append(qgsfeature_to_gee(feature, crs))
+    return ee.FeatureCollection(collection)
+
+
+def qgsprojection_to_gee(projection):
+    wkt = projection.toWkt()
+    return ee.Projection(wkt)
+
+
+def download_geeshp(asset, path, addToCanvas=False):
+    path = os.path.abspath(path)
+    print(1)
+    fc = ee.FeatureCollection(asset)
+    url = fc.getDownloadURL('shp')
+    print(url)
+    #with open(path, 'wb') as file:
+        #ile.write(resp.content)
+    thread = DownloadThread(url, path)
+    if addToCanvas:
+        thread.downloaded.connect(lambda: add_ziplayer(path, asset), QtCore.Qt.QueuedConnection)
+    thread.start()
+
+
+def add_ziplayer(path, name):
+    z = zipfile.ZipFile(path, 'r')
+    z.extractall()
+    print(5)
+    shp_path = os.path.split(path)[0] + os.path.sep
+    vlayer = QgsVectorLayer(shp_path + 'table.shp', name, 'ogr')
+    if not vlayer.isValid():
+        iface.messageBar().pushMessage('Error', 'Cannot load vector layer',
+                                       level=Qgis.Critical, duration=10)
+    else:
+        QgsProject.instance().addMapLayer(vlayer)
+
+
+class DownloadThread(QtCore.QThread):
+    downloaded = QtCore.pyqtSignal()
+    def __init__(self, url, path, parent=None):
+        QtCore.QThread.__init__(self,parent)
+        self.url = url
+        self.path = path
+
+    def run(self):
+        urllib.request.urlretrieve(url, path)
+        self.downloaded.emit()
+        print(3)
+
+
+def geevector_to_qgs(collection, crs='epsg:4326', addToCanvas=True):
+    l = collection.toList(5000)
+    l.getInfo = exec_til_success(ProtocolError, NUM_TILL_SUCCESS)(l.getInfo)
+    gee_features = l.getInfo()
+    first = gee_features[0]
+    type_ = first['geometry']['type']
+    vlayer = QgsVectorLayer(type_+'?crs='+crs, 'table', 'memory')
+    dp = vlayer.dataProvider()
+    fields = []
+    for field in first['properties']:
+        fields.append(QgsField(field, QtCore.QVariant.String, 'text', 20))
+    dp.addAttributes(fields)
+    vlayer.updateFields()
+    features = []
+    for f in gee_features:
+        fet = QgsFeature()
+        coords = f['geometry']['coordinates']
+        wkt = to_wkt(type_, coords)
+        geom = QgsGeometry.fromWkt(wkt)
+        fet.setGeometry(geom)
+        fet.setAttributes([str(i) for i in f['properties'].values()])
+        features.append(fet)
+    dp.addFeatures(features)
+    vlayer.updateExtents()
+
+    if addToCanvas:
+        if not vlayer.isValid():
+            iface.messageBar().pushMessage('Error', 'Cannot load vector layer',
+                                           level=Qgis.Critical, duration=10)
+        else:
+            QgsProject.instance().addMapLayer(vlayer)
+    return vlayer
+
+
+def to_wkt(type_, coords):
+    wkt = ''
+    if type_ == 'LineString':
+        for i in coords[:-1]:
+            wkt += ' '.join([str(i[0]), str(i[1])]) + ', '
+        wkt += ' '.join([str(coords[-1][0]), str(coords[-1][1])])
+        wkt = type_.upper() + ' (' + wkt + ')'
+    elif type_ == 'Polygon':
+        coords = coords[0]
+        for i in coords[:-1]:
+            wkt += ' '.join([str(i[0]), str(i[1])]) + ', '
+        wkt += ' '.join([str(coords[-1][0]), str(coords[-1][1])])
+        wkt = type_.upper() + ' ((' + wkt + '))'
+    else:
+        wkt = type.upper() + '(' + ' '.join([str(coords[0]), str(coords[1])]) + ')'
+    return wkt
+
+
+def geefeature_to_qgs(feature):
+    info = feature.getInfo()
+    res = QgsFeature()
+    res.setAttributes(list(info['properties'].values()))
+    wkt = to_wkt(info['geometry']['type'],info['geometry']['coordinates'])
+    res.setGeometry(QgsGeometry.fromWkt(wkt))
+    return res
 
 
 def get_selected_gee(n=1):

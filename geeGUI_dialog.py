@@ -108,15 +108,22 @@ class DownloadDialog(QtWidgets.QWidget, DOWNLOAD_CLASS):
         limit = self.limitBox.value()
         dataset = self.datasets.currentText()
         name = self.layerName.text()
+
+        max_ = self.maxBox.value()
+        min_ = self.minBox.value()
         bands = []
         for i in range(self.num_bands):
             bands.append(self.bands[i].currentText())
+        visParams = {'bands': bands}
+        if max_ and min_:
+            visParams.update({'max': max_, 'min': min_})
         self.manager.set_date_range(start_date, end_date)
         self.manager.set_cloud(cloud)
         self.manager.set_limit(limit)
+        self.manager.set_vis(visParams)
         geom = get_selected_gee()
         if geom: geom = geom[0]
-        self.manager.import_e(dataset, bands, geom, name)
+        self.manager.import_e(dataset, geom, name)
 
 
 class ExportDialog(QtWidgets.QWidget, EXPORT_CLASS):
