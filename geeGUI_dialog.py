@@ -58,6 +58,27 @@ class KernelDialog(QtWidgets.QWidget, KERNEL_CLASS):
         """Constructor."""
         super(KernelDialog, self).__init__(parent)
         self.setupUi(self)
+        self.funcs = [self.cos, self.sin, self.tan, self.log10,self.acos, self.asin, self.atan, self.log,
+                 self.cosh, self.sinh, self.tanh, self.abs_, self.min_, self.max_, self.floor, self.ceil]
+        self.operands = [self.plus, self.mul, self.pow, self.mod, self.minus, self.div,
+                    self.lte, self.gte, self.lt, self.gt, self.eq, self.neq,
+                    self.and_, self.or_, self.nor, self.not_, self.ternar]
+        self.braces = [self.sc, self.sce]
+        self.buttons = QtWidgets.QButtonGroup()
+        self.buttons.setExclusive(False)
+        for s, button in enumerate(self.funcs+self.operands+self.braces):
+            self.buttons.addButton(button, s)
+        self.buttons.buttonClicked.connect(self.insertText)
+
+    def insertText(self, obj):
+        text = obj.text()
+        id = self.buttons.id(obj)
+        border = len(self.funcs)
+        if  id in range(border):
+            text=' '+ text+ '('
+        elif id in range(border, len(self.operands)+border):
+            text = ' ' + text+ ' '
+        self.rasterExpression.insertPlainText(text)
 
 
 class DownloadDialog(QtWidgets.QWidget, DOWNLOAD_CLASS):

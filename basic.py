@@ -1,5 +1,5 @@
 import ee
-from ee_plugin import Map
+from ee_plugin import Map, utils
 from .dataset import gee_dataset
 from urllib3.exceptions import ProtocolError
 from qgis.utils import iface
@@ -52,12 +52,14 @@ class LayerManager:
     def __init__(self):
         self.layers = {}
 
-    def subscript_layer(self, image_name, layer_name, image, vis, info=None):
-        qgs_layer = iface.activeLayer()
+    def subscript_layer(self, layer_name, image, vis, qgs_layer=None, info=None):
+        if not qgs_layer:
+            qgs_layer = utils.get_layer_by_name(layer_name)
         if not info:
             info = image.getInfo()
         if info['properties'].get('description',''):
             del info['properties']['description'] # for saving memory
+        image_name = info.get('id',None)
         res = {
             layer_name: {
                 'gee_id': image_name, #for fast retreiving bands from dataset
@@ -74,6 +76,17 @@ class LayerManager:
         self.layers.pop(layer_name)
 
     def __getitem__(self, index):
+        if not self.layers.get(index,''):
+            layer = utils.get_layer_by_name(index)
+            if layer and layer.customProperty('ee-object'):
+                dp  = layer.dataProvider()
+                obj = dp.ee_object
+                info = dp.ee_info
+                vis = json.loads(layer.customProperty('ee-object-vis'))
+                self.subscript_layer(index, obj, vis, layer, info)
+            else:
+                message = 'Layer doesn\'t exist or is not EE layer'
+                raise NameError(message)
         return self.layers[index]
 
     def names(self):
@@ -117,7 +130,7 @@ class PreprocessingEE:
         #if len(bands) == 1: visParams.update({'palette': self.palette})
         torender = image.mosaic() if isinstance(image,ee.ImageCollection) else image
         Map.addLayer(torender, self.vis_params, layer_name, True)#ee_plugin doesn't support adding image collections, can make mosaic instead
-        self.layers.subscript_layer(image_name, layer_name, image, self.vis_params, info)  # here we merge qgis and gee layer information
+        self.layers.subscript_layer(layer_name, image, self.vis_params, info=info)  # here we merge qgis and gee layer information
         return image
 
     def search_property(self, info, base='CLOUD'):
@@ -164,7 +177,7 @@ class ExportingEE:
         image = self.layers[layer_name]['obj']
         visParams = self.layers.vis_params(layer_name)
         segments = layer_name.split('/')
-        if segments[0] == 'users' and segments[1].startswith('st'):
+        if segments[0] == 'users':
             desc = '_'.join(segments[2:])
         else:
             desc = layer_name.replace('/', '_')
@@ -262,16 +275,46 @@ def qgsprojection_to_gee(projection):
 
 def download_geeshp(asset, path, addToCanvas=False):
     path = os.path.abspath(path)
-    print(1)
     fc = ee.FeatureCollection(asset)
     url = fc.getDownloadURL('shp')
-    print(url)
-    #with open(path, 'wb') as file:
-        #ile.write(resp.content)
-    thread = DownloadThread(url, path)
-    if addToCanvas:
-        thread.downloaded.connect(lambda: add_ziplayer(path, asset), QtCore.Qt.QueuedConnection)
-    thread.start()
+    task = DownloadTask('download zip with shp', url, path, addToCanvas)
+    QgsApplication.taskManager().addTask(task)
+
+
+class DownloadTask(QgsTask):
+    def __init__(self, description, url, path, add):
+        super().__init__(description, QgsTask.CanCancel)
+        self.exception = None
+        self.url = url
+        self.path = path
+        self.add = add
+        self.category = 'SHP downloading'
+
+    def run(self):
+        QgsMessageLog.logMessage('Started task "{}"'.format(self.description()), self.category, Qgis.Info)
+        try:
+            urllib.request.urlretrieve(self.url, self.path)
+        except Exception as exc:
+            self.exception = exc
+            return False
+        return True
+
+    def finished(self, result):
+        if result:
+            QgsMessageLog.logMessage(f'Task {self.description} succeded',
+                                     self.category, Qgis.Success)
+            if self.add:
+                add_ziplayer(self.path, 'table')
+        elif self.exception:
+            QgsMessageLog.logMessage(f'Task {self.description} failed: {str(self.exception)}',
+                                     self.category, Qgis.Critical)
+        else:
+            QgsMessageLog.logMessage(f'Task {self.description} failed without exception',
+                                     self.category, Qgis.Warning)
+
+    def cancel(self):
+        QgsMessageLog.logMessage(f'Terminated: {self.description}', self.category, Qgis.Warning)
+        super().cancel()
 
 
 def add_ziplayer(path, name):
@@ -285,19 +328,6 @@ def add_ziplayer(path, name):
                                        level=Qgis.Critical, duration=10)
     else:
         QgsProject.instance().addMapLayer(vlayer)
-
-
-class DownloadThread(QtCore.QThread):
-    downloaded = QtCore.pyqtSignal()
-    def __init__(self, url, path, parent=None):
-        QtCore.QThread.__init__(self,parent)
-        self.url = url
-        self.path = path
-
-    def run(self):
-        urllib.request.urlretrieve(url, path)
-        self.downloaded.emit()
-        print(3)
 
 
 def geevector_to_qgs(collection, crs='epsg:4326', addToCanvas=True):
