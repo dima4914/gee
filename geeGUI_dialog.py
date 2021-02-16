@@ -29,6 +29,7 @@ from qgis.PyQt import uic
 from qgis.PyQt import QtWidgets
 from .dataset import gee_dataset
 from .basic import *
+from .utils import *
 import webbrowser
 
 #from .geeGUI_dialog_base import Ui_GEEManagerDialogBase as FORM_CLASS
@@ -162,7 +163,7 @@ class ExportDialog(QtWidgets.QWidget, EXPORT_CLASS):
 
     def on_layers_update(self):
         self.layerBox.clear()
-        self.layerBox.addItems(self.manager.layers.names())
+        self.layerBox.addItems(get_gee_names())
 
     def toggle_mode(self, obj):
         id = self.exportButtonGroup.id(obj)

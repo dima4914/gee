@@ -10,6 +10,7 @@ import json
 import os
 import zipfile
 import urllib
+import re
 
 NUM_TILL_SUCCESS = 3
 
@@ -57,7 +58,7 @@ class LayerManager:
             qgs_layer = utils.get_layer_by_name(layer_name)
         if not info:
             info = image.getInfo()
-        if info['properties'].get('description',''):
+        if info.get('properties', '') and info['properties'].get('description',''):
             del info['properties']['description'] # for saving memory
         image_name = info.get('id',None)
         res = {
@@ -165,6 +166,63 @@ class PreprocessingEE:
 
     def set_vis(self, vis):
         self.vis_params = vis
+
+
+class MapAlgebraEE:
+    def __init__(self, exp=''):
+        self.layers = _layers
+        self.rb_pattern = '\(?(\w+)@(\w+)\)?'
+        self.func_pattern = '(\w{3,5})\s?\((\w+)@(\w+)\)?'
+        self.exp = exp
+        self.prefix = 'VV'
+
+    def get_lname_bands(self):
+        rb = re.findall(self.rb_pattern, self.exp)
+        names =[]
+        bands = []
+        for i in rb:
+            names.append(i[0])
+            bands.append(i[1])
+        return names, bands
+
+    def retrieve_gee_bands(self):
+        names, bands = self.get_lname_bands()
+        gee_bands = []
+        for i in range(len(names)):
+            layer = self.layers[names[i]]
+            gee_bands.append(layer['obj'].select(bands[i]))
+        return gee_bands
+
+    def apply_raster_func(self):
+        fr = re.findall(self.func_pattern, self.exp)
+        return fr
+
+    def apply(self):
+        'algorithm is to retrieve func, layer name and band; make images and substitute them in exp with prefix-id'
+        images = []
+        fr = re.findall(self.func_pattern, self.exp)
+        for s,i in enumerate(fr):
+            gee_obj = self.layers[i[1]]['obj']
+            gee_obj = gee_obj.select(i[2])
+            gee_obj = eval(f'gee_obj.{i[0]}()')
+            images.append(gee_obj)
+            self.exp = re.sub(self.func_pattern, self.prefix+str(s), self.exp,1)
+        br = re.findall(self.rb_pattern, self.exp)
+        for name, band in br:
+            s+=1
+            gee_obj = self.layers[name]['obj']
+            gee_obj = gee_obj.select(band)
+            images.append(gee_obj)
+            self.exp = re.sub(self.rb_pattern, self.prefix+str(s), self.exp,1)
+        params = {}
+        for s,image in enumerate(images):
+            params.update({self.prefix+str(s): image})
+        res = images[0].expression(self.exp, params)
+
+        return self.exp, params, res
+
+    def set_expression(self, exp):
+        self.exp = exp
 
 
 class ExportingEE:
