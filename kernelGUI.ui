@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>514</width>
-    <height>514</height>
+    <width>508</width>
+    <height>519</height>
    </rect>
   </property>
   <property name="minimumSize">
@@ -19,7 +19,7 @@
   <property name="windowTitle">
    <string>Form</string>
   </property>
-  <widget class="QListView" name="bands">
+  <widget class="QListView" name="bandList">
    <property name="geometry">
     <rect>
      <x>10</x>
@@ -29,7 +29,7 @@
     </rect>
    </property>
    <property name="editTriggers">
-    <set>QAbstractItemView::DoubleClicked|QAbstractItemView::SelectedClicked</set>
+    <set>QAbstractItemView::NoEditTriggers</set>
    </property>
    <property name="showDropIndicator" stdset="0">
     <bool>false</bool>
@@ -41,8 +41,8 @@
   <widget class="QCheckBox" name="addButton">
    <property name="geometry">
     <rect>
-     <x>340</x>
-     <y>190</y>
+     <x>290</x>
+     <y>180</y>
      <width>101</width>
      <height>17</height>
     </rect>
@@ -408,6 +408,134 @@
    </property>
    <property name="text">
     <string notr="true">Expression</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="estimateButton">
+   <property name="geometry">
+    <rect>
+     <x>410</x>
+     <y>170</y>
+     <width>81</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="font">
+    <font>
+     <pointsize>9</pointsize>
+    </font>
+   </property>
+   <property name="text">
+    <string notr="true">estimate</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_3">
+   <property name="geometry">
+    <rect>
+     <x>290</x>
+     <y>40</y>
+     <width>71</width>
+     <height>16</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>layer name</string>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="layerName">
+   <property name="geometry">
+    <rect>
+     <x>360</x>
+     <y>40</y>
+     <width>121</width>
+     <height>20</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_4">
+   <property name="geometry">
+    <rect>
+     <x>320</x>
+     <y>70</y>
+     <width>47</width>
+     <height>16</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>min</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_5">
+   <property name="geometry">
+    <rect>
+     <x>320</x>
+     <y>100</y>
+     <width>47</width>
+     <height>13</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>max</string>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="minBox">
+   <property name="geometry">
+    <rect>
+     <x>360</x>
+     <y>70</y>
+     <width>91</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="minimum">
+    <number>-50000</number>
+   </property>
+   <property name="maximum">
+    <number>50000</number>
+   </property>
+   <property name="singleStep">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="maxBox">
+   <property name="geometry">
+    <rect>
+     <x>360</x>
+     <y>100</y>
+     <width>91</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="minimum">
+    <number>-50000</number>
+   </property>
+   <property name="maximum">
+    <number>50000</number>
+   </property>
+   <property name="singleStep">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_6">
+   <property name="geometry">
+    <rect>
+     <x>310</x>
+     <y>130</y>
+     <width>47</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>palette</string>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="palette">
+   <property name="geometry">
+    <rect>
+     <x>360</x>
+     <y>130</y>
+     <width>91</width>
+     <height>20</height>
+    </rect>
    </property>
   </widget>
  </widget>

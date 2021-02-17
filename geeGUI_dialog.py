@@ -70,6 +70,11 @@ class KernelDialog(QtWidgets.QWidget, KERNEL_CLASS):
         for s, button in enumerate(self.funcs+self.operands+self.braces):
             self.buttons.addButton(button, s)
         self.buttons.buttonClicked.connect(self.insertText)
+        self.manager = MapAlgebraEE()
+        self.model = QtCore.QStringListModel([], parent=self)
+        self.init_bands_list()
+        self.bandList.doubleClicked.connect(self.on_band_clicked)
+        self.estimateButton.clicked.connect(self.estimate)
 
     def insertText(self, obj):
         text = obj.text()
@@ -80,6 +85,41 @@ class KernelDialog(QtWidgets.QWidget, KERNEL_CLASS):
         elif id in range(border, len(self.operands)+border):
             text = ' ' + text+ ' '
         self.rasterExpression.insertPlainText(text)
+
+    def init_bands_list(self):
+        items = []
+        gee_names = get_gee_names()
+        for name in gee_names:
+            layer = self.manager.layers[name]
+            obj = layer['obj']
+            if isinstance(obj, ee.Image):
+                bands = [band['id'] for band in layer['meta']['bands']]
+            else:
+                bands = [band['id'] for band in layer['meta']['features'][0]['bands']]
+            for b in bands:
+                items.append(f'{name}@{b}')
+        self.model = QtCore.QStringListModel(items, parent=self)
+        self.bandList.setModel(self.model)
+
+    def on_band_clicked(self, index):
+        text  = index.data()
+        self.rasterExpression.insertPlainText(text)
+
+    def estimate(self):
+        self.manager.set_expression(self.rasterExpression.toPlainText())
+        res = self.manager.apply()
+        if self.addButton.isChecked():
+            layer_name = self.layerName.text()
+            max = self.maxBox.value()
+            min = self.minBox.value()
+            vis = {}
+            if max: vis.update({'max': max})
+            if min: vis.update({'min': min})
+            palette = self.palette.text()
+            if palette: vis.update({'palette': ['white', palette]})
+            pr = PreprocessingEE('','')
+            pr.set_vis(vis)
+            pr.show_and_subscript(res, layer_name)
 
 
 class DownloadDialog(QtWidgets.QWidget, DOWNLOAD_CLASS):
@@ -198,9 +238,10 @@ class GEEManagerDialog(QtWidgets.QDialog, FORM_CLASS):
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
         self.export = ExportDialog()
+        self.map_algebra = KernelDialog()
         self.panels = {
             '  Download dataset': DownloadDialog(),
-            '  Apply kernels': KernelDialog(),
+            '  Apply kernels': self.map_algebra,
             '  Estimate indices': DownloadDialog(),
             '  Export': self.export,
             '  Settings': ExportDialog()
@@ -219,4 +260,5 @@ class GEEManagerDialog(QtWidgets.QDialog, FORM_CLASS):
     def update_layers_info(self):
         "syncronize information about changing layers between all panels"
         self.export.on_layers_update()
+        self.map_algebra.init_bands_list()
 

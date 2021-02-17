@@ -53,7 +53,7 @@ class LayerManager:
     def __init__(self):
         self.layers = {}
 
-    def subscript_layer(self, layer_name, image, vis, qgs_layer=None, info=None):
+    def subscript_layer(self, layer_name, image, vis={}, qgs_layer=None, info=None):
         if not qgs_layer:
             qgs_layer = utils.get_layer_by_name(layer_name)
         if not info:
@@ -125,10 +125,10 @@ class PreprocessingEE:
                 if self.limit: image = image.limit(self.limit)
         else:
             image = ee.Image(image_name)#then support only Images(temporaly)
+        self.show_and_subsript(image, layer_name)
 
+    def show_and_subscript(self, image, layer_name ='gee_data'):
         info = image.getInfo()
-
-        #if len(bands) == 1: visParams.update({'palette': self.palette})
         torender = image.mosaic() if isinstance(image,ee.ImageCollection) else image
         Map.addLayer(torender, self.vis_params, layer_name, True)#ee_plugin doesn't support adding image collections, can make mosaic instead
         self.layers.subscript_layer(layer_name, image, self.vis_params, info=info)  # here we merge qgis and gee layer information
@@ -201,6 +201,7 @@ class MapAlgebraEE:
         'algorithm is to retrieve func, layer name and band; make images and substitute them in exp with prefix-id'
         images = []
         fr = re.findall(self.func_pattern, self.exp)
+        s = -1
         for s,i in enumerate(fr):
             gee_obj = self.layers[i[1]]['obj']
             gee_obj = gee_obj.select(i[2])
@@ -219,7 +220,7 @@ class MapAlgebraEE:
             params.update({self.prefix+str(s): image})
         res = images[0].expression(self.exp, params)
 
-        return self.exp, params, res
+        return res
 
     def set_expression(self, exp):
         self.exp = exp
