@@ -289,23 +289,23 @@ padding: 15px;</string>
       </item>
       <item>
        <property name="text">
-        <string>  Apply kernels</string>
+        <string>  Map algebra</string>
        </property>
        <property name="textAlignment">
         <set>AlignLeading|AlignVCenter</set>
        </property>
        <property name="icon">
         <iconset>
-         <normaloff>:/plugins/geegui/icons/Transform.png</normaloff>:/plugins/geegui/icons/Transform.png</iconset>
+         <normaloff>:/plugins/geegui/icons/ndvi.png</normaloff>:/plugins/geegui/icons/ndvi.png</iconset>
        </property>
       </item>
       <item>
        <property name="text">
-        <string>  Estimate indices</string>
+        <string>  Operations</string>
        </property>
        <property name="icon">
         <iconset>
-         <normaloff>:/plugins/geegui/icons/ndvi.png</normaloff>:/plugins/geegui/icons/ndvi.png</iconset>
+         <normaloff>:/plugins/geegui/icons/Transform.png</normaloff>:/plugins/geegui/icons/Transform.png</iconset>
        </property>
       </item>
       <item>

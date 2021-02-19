@@ -31,6 +31,7 @@ from .dataset import gee_dataset
 from .basic import *
 from .utils import *
 import webbrowser
+from .panels import OperForm
 
 #from .geeGUI_dialog_base import Ui_GEEManagerDialogBase as FORM_CLASS
 
@@ -44,7 +45,8 @@ DOWNLOAD_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'downloadGUI.ui'))
 EXPORT_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'exportGUI.ui'))
-
+OPERATION_CLASS, _ = uic.loadUiType(os.path.join(
+    os.path.dirname(__file__), 'operationsGUI.ui'))
 
 def set_radio_group(radio1, radio2, func):
     buttonGroup = QtWidgets.QButtonGroup()
@@ -120,6 +122,19 @@ class KernelDialog(QtWidgets.QWidget, KERNEL_CLASS):
             pr = PreprocessingEE('','')
             pr.set_vis(vis)
             pr.show_and_subscript(res, layer_name)
+
+
+class OperationDialog(OperForm):
+    def __init__(self, parent=None):
+        """Constructor."""
+        super(OperationDialog, self).__init__(parent)
+        self.setupUi()
+        func1 = lambda x: self.clipping.setFixedSize(60,15) if x else self.clipping.setFixedSize(200,60)
+        func2 = lambda x: self.painting.setFixedSize(480,15) if x else self.painting.setFixedSize(480,180)
+        func3 = lambda x: self.reducing.setFixedSize(480,15) if x else self.reducing.setFixedSize(480,180)
+        self.clipping.collapsedStateChanged.connect(func1)
+        self.painting.collapsedStateChanged.connect(func2)
+        self.reducing.collapsedStateChanged.connect(func3)
 
 
 class DownloadDialog(QtWidgets.QWidget, DOWNLOAD_CLASS):
@@ -239,10 +254,11 @@ class GEEManagerDialog(QtWidgets.QDialog, FORM_CLASS):
         self.setupUi(self)
         self.export = ExportDialog()
         self.map_algebra = KernelDialog()
+        self.operations = OperationDialog()
         self.panels = {
             '  Download dataset': DownloadDialog(),
-            '  Apply kernels': self.map_algebra,
-            '  Estimate indices': DownloadDialog(),
+            '  Map algebra': self.map_algebra,
+            '  Operations': self.operations,
             '  Export': self.export,
             '  Settings': ExportDialog()
         }
