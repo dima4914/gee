@@ -31,15 +31,17 @@ def exec_til_success(exc, n):
     return decorator
 
 
-def exception_as_gui(func):
-    def wrapper(*args, **kwargs):
-        try:
-            res = func(*args, **kwargs)
-        except ee.ee_exception.EEException as exc:
-            QtWidgets.QMessageBox.critical(None, type(exc).__name__, str(exc))
-        else:
-            return res
-    return wrapper
+def exception_as_gui(exc):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            try:
+                res = func(*args, **kwargs)
+            except exc as e:
+                QtWidgets.QMessageBox.critical(None, type(e).__name__, str(e))
+            else:
+                return res
+        return wrapper
+    return decorator
 
 
 Map.addLayer = exec_til_success(ProtocolError, NUM_TILL_SUCCESS)(Map.addLayer)
@@ -47,11 +49,13 @@ ee.Image.getInfo = exec_til_success(ProtocolError, NUM_TILL_SUCCESS)(ee.Image.ge
 ee.ImageCollection.getInfo = exec_til_success(ProtocolError, NUM_TILL_SUCCESS)(ee.ImageCollection.getInfo)
 ee.FeatureCollection.getInfo = exec_til_success(ProtocolError, NUM_TILL_SUCCESS)(ee.FeatureCollection.getInfo)
 ee.FeatureCollection.getDownloadURL = exec_til_success(ProtocolError, NUM_TILL_SUCCESS)(ee.FeatureCollection.getDownloadURL)
-
+ee.Dictionary.getInfo = exec_til_success(ProtocolError, NUM_TILL_SUCCESS)(ee.Dictionary.getInfo)
+ee.Number.getInfo = exec_til_success(ProtocolError, NUM_TILL_SUCCESS)(ee.Number.getInfo)
 
 class LayerManager:
     def __init__(self):
         self.layers = {}
+        self.cache = {}
 
     def subscript_layer(self, layer_name, image, vis={}, qgs_layer=None, info=None):
         if not qgs_layer:
@@ -78,20 +82,35 @@ class LayerManager:
 
     def __getitem__(self, index):
         if not self.layers.get(index,''):
-            layer = utils.get_layer_by_name(index)
-            if layer and layer.customProperty('ee-object'):
-                dp  = layer.dataProvider()
-                obj = dp.ee_object
-                info = dp.ee_info
-                vis = json.loads(layer.customProperty('ee-object-vis'))
-                self.subscript_layer(index, obj, vis, layer, info)
+            if not self.cache.get(index, ''):
+                layer = utils.get_layer_by_name(index)
+                if layer and layer.customProperty('ee-object'):
+                    dp  = layer.dataProvider()
+                    obj = dp.ee_object
+                    info = dp.ee_info
+                    vis = json.loads(layer.customProperty('ee-object-vis'))
+                    self.subscript_layer(index, obj, vis, layer, info)
+                    res = self.layers[index]
+                else:
+                    message = 'Layer doesn\'t exist or is not EE layer'
+                    raise NameError(message)
             else:
-                message = 'Layer doesn\'t exist or is not EE layer'
-                raise NameError(message)
-        return self.layers[index]
+                res = self.cache[index]
+        else:
+            res = self.layers[index]
+        return res
+
+    def dump_cache_layer(self, layer_name, obj, vis, meta=None):
+        if not meta: meta = obj.getInfo()
+        res = {layer_name:{'obj':obj, 'vis': vis, 'meta': meta}}
+        self.cache.update(res)
+        return res
 
     def names(self):
         return self.layers.keys()
+
+    def cache_names(self):
+        return list(self.cache.keys())
 
     def vis_params(self, layer_name):
         return self[layer_name]['vis']
@@ -111,7 +130,7 @@ class PreprocessingEE:
         self.cloud = cloud
         self.vis_params = {}
 
-    @exception_as_gui
+    @exception_as_gui(ee.ee_exception.EEException)
     def import_e(self,image_name, geometry=None, layer_name='gee_data'):
         """Imports collection or single image to the gis with visual parameters,
         Important news: less settings and saving layer information with qgis layer name for furthering computations"""
@@ -125,10 +144,10 @@ class PreprocessingEE:
                 if self.limit: image = image.limit(self.limit)
         else:
             image = ee.Image(image_name)#then support only Images(temporaly)
-        self.show_and_subsript(image, layer_name)
+        self.show_and_subscript(image, layer_name)
 
-    def show_and_subscript(self, image, layer_name ='gee_data'):
-        info = image.getInfo()
+    def show_and_subscript(self, image, layer_name ='gee_data', info=None):
+        if not info: info = image.getInfo()
         torender = image.mosaic() if isinstance(image,ee.ImageCollection) else image
         Map.addLayer(torender, self.vis_params, layer_name, True)#ee_plugin doesn't support adding image collections, can make mosaic instead
         self.layers.subscript_layer(layer_name, image, self.vis_params, info=info)  # here we merge qgis and gee layer information
@@ -205,7 +224,8 @@ class MapAlgebraEE:
         for s,i in enumerate(fr):
             gee_obj = self.layers[i[1]]['obj']
             gee_obj = gee_obj.select(i[2])
-            gee_obj = eval(f'gee_obj.{i[0]}()')
+            if isinstance(gee_obj, ee.ImageCollection): gee_obj = gee_obj.median()
+            gee_obj = eval(f'{gee_obj}.{i[0]}()')
             images.append(gee_obj)
             self.exp = re.sub(self.func_pattern, self.prefix+str(s), self.exp,1)
         br = re.findall(self.rb_pattern, self.exp)
@@ -213,6 +233,7 @@ class MapAlgebraEE:
             s+=1
             gee_obj = self.layers[name]['obj']
             gee_obj = gee_obj.select(band)
+            if isinstance(gee_obj, ee.ImageCollection): gee_obj = gee_obj.median()
             images.append(gee_obj)
             self.exp = re.sub(self.rb_pattern, self.prefix+str(s), self.exp,1)
         params = {}
@@ -230,7 +251,7 @@ class ExportingEE:
     def __init__(self):
         self.layers = _layers
 
-    @exception_as_gui
+    @exception_as_gui(ee.ee_exception.EEException)
     def export_e(self,  layer_name, scale, max_pixels=1e9, format_='GeoTIFF', folder = 'GEE_Data',
                  pyramid='mean', geometry=None, dest='drive',verbose=True):
         image = self.layers[layer_name]['obj']
@@ -315,16 +336,19 @@ def qgsfeature_to_gee(feature, crs="EPSG:4326"):
 
 
 def qgsvector_to_gee(layer, expression='', limit=0):
-    crs = f'EPSG:{layer.sourceCrs().postgisSrid()}'
-    collection = []
-    request = QgsFeatureRequest()
-    if expression:
-        request = request.setFilterExpression(expression)
-    if limit:
-        request.setLimit(limit)
-    for feature in layer.getFeatures(request):
-        collection.append(qgsfeature_to_gee(feature, crs))
-    return ee.FeatureCollection(collection)
+    if isinstance(layer, str):
+        layer = utils.get_layer_by_name(layer)
+    if isinstance(layer, QgsVectorLayer):
+        crs = f'EPSG:{layer.sourceCrs().postgisSrid()}'
+        collection = []
+        request = QgsFeatureRequest()
+        if expression:
+            request = request.setFilterExpression(expression)
+        if limit:
+            request.setLimit(limit)
+        for feature in layer.getFeatures(request):
+            collection.append(qgsfeature_to_gee(feature, crs))
+        return ee.FeatureCollection(collection)
 
 
 def qgsprojection_to_gee(projection):
@@ -450,13 +474,14 @@ def geefeature_to_qgs(feature):
     return res
 
 
-def get_selected_gee(n=1):
-    layer = iface.activeLayer()
+def get_selected_gee(layer, n=1):
+    if isinstance(layer, str):
+        layer = utils.get_layer_by_name(layer)
     geometry_list = []
     if isinstance(layer,  QgsVectorLayer) and (layer.selectedFeatureCount()>0):
         crs = f'EPSG:{layer.sourceCrs().postgisSrid()}'
         request = QgsFeatureRequest()
-        request.setLimit(n)
+        if n: request.setLimit(n)
         for feature in layer.getSelectedFeatures(request):
             geom = feature.geometry()
             gee_object = qgsgeometry_to_gee(geom, crs)

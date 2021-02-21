@@ -67,10 +67,10 @@ class OperForm(QtWidgets.QWidget):
         self.paintButton = QtWidgets.QPushButton('paint layer', self.painting)
         self.paintButton.setGeometry(QtCore.QRect(320, 60, 75, 31))
 		
-        self.horizontalSlider = QtWidgets.QSlider(self.painting)
-        self.horizontalSlider.setGeometry(QtCore.QRect(70, 60, 131, 21))
-        self.horizontalSlider.setProperty("value", 99)
-        self.horizontalSlider.setOrientation(QtCore.Qt.Horizontal)
+        self.opacitySlide = QtWidgets.QSlider(self.painting)
+        self.opacitySlide.setGeometry(QtCore.QRect(70, 60, 131, 21))
+        self.opacitySlide.setProperty("value", 99)
+        self.opacitySlide.setOrientation(QtCore.Qt.Horizontal)
 		
         self.label_5 = QtWidgets.QLabel('Opacity', self.painting)
         self.label_5.setGeometry(QtCore.QRect(20, 60, 47, 21))
@@ -162,6 +162,7 @@ class OperForm(QtWidgets.QWidget):
         self.pixBox = QtWidgets.QSpinBox(self.reducing)
         self.pixBox.setGeometry(QtCore.QRect(90, 150, 61, 22))
         self.pixBox.setProperty("value", 10)
+        self.pixBox.setPrefix('1e')
 
         self.neighborhood = QtWidgets.QRadioButton(self.reducing)
         self.neighborhood.setGeometry(QtCore.QRect(290, 20, 91, 17))
@@ -180,6 +181,7 @@ class OperForm(QtWidgets.QWidget):
         self.bandsRadio = QtWidgets.QRadioButton(self.reducing)
         self.bandsRadio.setGeometry(QtCore.QRect(100, 20, 90, 17))
         self.bandsRadio.setText('bands/images')
+        self.bandsRadio.setChecked(True)
 
         self.typeBox = QtWidgets.QComboBox(self.reducing)
         self.typeBox.setGeometry(QtCore.QRect(90, 61, 131, 22))
@@ -208,10 +210,13 @@ class OperForm(QtWidgets.QWidget):
         self.panelsV.addWidget(self.clipping)
         self.panelsV.addWidget(self.painting)
         self.panelsV.addWidget(self.reducing)
-		
+
+        self.addCheck = QtWidgets.QCheckBox('Add to project')
+        self.addCheck.setChecked(True)
+
         self.mainLayout = QtWidgets.QVBoxLayout()
         self.mainLayout.addLayout(self.formsH)
-        self.mainLayout.addWidget(self.clipWarning, alignment=QtCore.Qt.AlignCenter)
+        self.mainLayout.addWidget(self.addCheck, alignment=QtCore.Qt.AlignRight)
         self.mainLayout.addLayout(self.panelsV)
         self.mainLayout.addStretch()
         self.mainLayout.setSpacing(5)

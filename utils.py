@@ -27,4 +27,7 @@ def pan_sharp(image, bands=['B4','B3', 'B2'], panchrom='B8'):
     sharpened = ee.Image.cat([hsv.select('hue'), hsv.select('saturation'), image.select(panchrom)]).hsvToRgb()
     return sharpened
 
+class GeometryNotFoundError(Exception): pass
+class VectorNotFoundError(Exception): pass
+
 

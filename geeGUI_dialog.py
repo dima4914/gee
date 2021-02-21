@@ -45,14 +45,14 @@ DOWNLOAD_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'downloadGUI.ui'))
 EXPORT_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'exportGUI.ui'))
-OPERATION_CLASS, _ = uic.loadUiType(os.path.join(
-    os.path.dirname(__file__), 'operationsGUI.ui'))
 
-def set_radio_group(radio1, radio2, func):
+
+def set_radio_group(*radios, func=None):
     buttonGroup = QtWidgets.QButtonGroup()
-    buttonGroup.addButton(radio1, 1)
-    buttonGroup.addButton(radio2, 2)
-    buttonGroup.buttonClicked.connect(func)
+    for s,radio in enumerate(radios):
+        buttonGroup.addButton(radio, s+1)
+    if func:
+        buttonGroup.buttonClicked.connect(func)
     return buttonGroup
 
 
@@ -91,7 +91,7 @@ class KernelDialog(QtWidgets.QWidget, KERNEL_CLASS):
     def init_bands_list(self):
         items = []
         gee_names = get_gee_names()
-        for name in gee_names:
+        for name in gee_names+self.manager.layers.cache_names():
             layer = self.manager.layers[name]
             obj = layer['obj']
             if isinstance(obj, ee.Image):
@@ -110,18 +110,20 @@ class KernelDialog(QtWidgets.QWidget, KERNEL_CLASS):
     def estimate(self):
         self.manager.set_expression(self.rasterExpression.toPlainText())
         res = self.manager.apply()
+        layer_name = self.layerName.text()
+        max = self.maxBox.value()
+        min = self.minBox.value()
+        vis = {}
+        if max: vis.update({'max': max})
+        if min: vis.update({'min': min})
+        palette = self.palette.text()
+        if palette: vis.update({'palette': ['white', palette]})
         if self.addButton.isChecked():
-            layer_name = self.layerName.text()
-            max = self.maxBox.value()
-            min = self.minBox.value()
-            vis = {}
-            if max: vis.update({'max': max})
-            if min: vis.update({'min': min})
-            palette = self.palette.text()
-            if palette: vis.update({'palette': ['white', palette]})
             pr = PreprocessingEE('','')
             pr.set_vis(vis)
             pr.show_and_subscript(res, layer_name)
+        else:
+            self.manager.layers.dump_cache_layer(layer_name, res, vis)
 
 
 class OperationDialog(OperForm):
@@ -129,12 +131,201 @@ class OperationDialog(OperForm):
         """Constructor."""
         super(OperationDialog, self).__init__(parent)
         self.setupUi()
+        self.manager = PreprocessingEE('','')
         func1 = lambda x: self.clipping.setFixedSize(60,15) if x else self.clipping.setFixedSize(200,60)
         func2 = lambda x: self.painting.setFixedSize(480,15) if x else self.painting.setFixedSize(480,180)
         func3 = lambda x: self.reducing.setFixedSize(480,15) if x else self.reducing.setFixedSize(480,180)
         self.clipping.collapsedStateChanged.connect(func1)
         self.painting.collapsedStateChanged.connect(func2)
         self.reducing.collapsedStateChanged.connect(func3)
+        self.clipWarning.hide()
+        self.paintGroup = set_radio_group(self.paintRadio, self.blendRadio, func=self.toggle_paint_mode)
+        self.opaqGroup = set_radio_group(self.strokeRadio, self.opaqueRadio)
+        self.reduceGroup = set_radio_group(self.bandsRadio, self.region, self.neighborhood, func=self.toggle_reduce_mode)
+        self.reduceGroup.buttonClicked.emit(self.bandsRadio)
+
+        self.clipCollection.clicked.connect(self.on_clip) #it is button
+        self.paintButton.clicked.connect(self.on_paint)
+        self.reduceButton.clicked.connect(self.on_reduce)
+
+        self.init_combos()
+
+    def init_combos(self):
+        self.geeLayer.clear()
+        self.vectorLayer.clear()
+        self.geeLayer.addItems(get_gee_names()+self.manager.layers.cache_names())
+        self.vectorLayer.addItems(get_vector_names())
+
+    @exception_as_gui((GeometryNotFoundError, VectorNotFoundError))
+    def get_selected_collection(self):
+        if self.useSelected.isChecked():
+            geometry = get_selected_gee(self.vectorLayer.currentText(), 0)
+            if not geometry:
+                raise GeometryNotFoundError('Features are not selected in the current vector layer')
+            collection = [ee.Feature(geom, None) for geom in geometry]
+            collection = ee.FeatureCollection(collection)
+        else:
+            collection = qgsvector_to_gee(self.vectorLayer.currentText())
+            if not collection: raise VectorNotFoundError('Current vector layer is not valid')
+        return collection
+
+    def on_clip(self):
+        gee_layer = self.manager.layers[self.geeLayer.currentText()]
+        image = gee_layer['obj']
+        self.manager.set_vis(gee_layer['vis'])
+        collection = self.get_selected_collection()
+        if isinstance(image, ee.Image):
+            res = image.clipToCollection(collection)
+        else:
+            res = image.map(lambda img: img.clipToCollection(collection))
+        name = self.layer_name.text()
+        if name: self.geeLayer.addItem(name)
+        if self.addCheck.isChecked():
+            self.manager.show_and_subscript(res, name, gee_layer['meta'])
+        else:
+            self.manager.layers.dump_cache_layer(name, res, gee_layer['vis'], gee_layer['meta'])
+
+    def toggle_paint_mode(self, obj):
+        id = self.paintGroup.id(obj)
+        if id == 1:
+            self.opacitySlide.setDisabled(True)
+            self.palette.setDisabled(True)
+        else:
+            self.opacitySlide.setEnabled(True)
+            self.palette.setEnabled(True)
+
+    def on_paint(self):
+        gee_layer = self.manager.layers[self.geeLayer.currentText()]
+        image = gee_layer['obj']
+        collection = self.get_selected_collection()
+        property = self.property.text()
+        args = [1] if not property else [property]
+
+        max = self.maxBox.value()
+        min = self.minBox.value()
+        visParams = {}
+        vis = {}
+        if max: visParams.update({'max': max})
+        if min: visParams.update({'min': min})
+        print(visParams)
+
+        if self.paintRadio.isChecked():
+            vis = gee_layer['vis']
+            vis.update(visParams)
+            print(vis)
+            self.manager.set_vis(vis)
+            if self.strokeRadio.isChecked():
+                args.append(2)
+                if isinstance(image, ee.ImageCollection):
+                    res = image.map(lambda img: img.paint(collection, *args))
+                else:
+                    res = image.paint(collection, *args)
+            else:
+                if isinstance(image,ee.ImageCollection):
+                    res = image.map(lambda img: img.paint(collection, args[0]).paint(collection, 0, 2))
+                else:
+                    res = image.paint(collection, args[0]).paint(collection, 0, 2)
+        else:
+            empty = ee.Image().byte()
+            palette = self.palette.text()
+            opacity = self.opacitySlide.value()/100
+            visParams.update({'opacity': opacity})
+            if palette: visParams.update({'palette': palette})
+            if self.strokeRadio.isChecked():
+                args.append(2)
+                empty = empty.paint(collection, *args)
+            else:
+                empty = empty.paint(collection, args[0]).paint(collection, 0, 2)
+            empty = empty.visualize(**visParams)
+            if isinstance(image, ee.ImageCollection):
+                image = image.map(lambda img: img.visualize(**gee_layer['vis']))
+                res = image.map(lambda img: img.blend(empty))
+            else:
+                image = image.visualize(**gee_layer['vis'])
+                res = image.blend(empty)
+        name = self.layer_name.text()
+        if name: self.geeLayer.addItem(name)
+        if self.addCheck.isChecked():
+            self.manager.show_and_subscript(res, name)
+        else:
+            self.manager.layers.dump_cache_layer(name, res, vis)
+
+    def toggle_reduce_mode(self, obj):
+        id = self.reduceGroup.id(obj)
+        if id == 1:
+            self.scaleBox.setDisabled(True)
+            self.kernelRadius.setDisabled(True)
+            self.pixBox.setDisabled(True)
+            self.kernelType.setDisabled(True)
+        elif id == 2:
+            self.scaleBox.setEnabled(True)
+            self.kernelRadius.setDisabled(True)
+            self.pixBox.setEnabled(True)
+            self.kernelType.setDisabled(True)
+        else:
+            self.scaleBox.setDisabled(True)
+            self.pixBox.setDisabled(True)
+            self.kernelRadius.setEnabled(True)
+            self.kernelType.setEnabled(True)
+
+    #@exception_as_gui(TypeError)
+    def on_reduce(self):
+        reducerType = self.typeBox.currentText()
+        gee_name = self.geeLayer.currentText()
+        reducer = eval(f'ee.Reducer.{reducerType}()')
+        gee_layer = self.manager.layers[gee_name]
+        image = gee_layer['obj']
+        vis = gee_layer['vis']
+        if self.bandsRadio.isChecked():
+            res = image.reduce(reducer)
+            if isinstance(image, ee.ImageCollection):
+                bands = [band+'_'+reducerType for band in vis['bands']]
+                print(bands)
+            else:
+                bands = [reducerType]
+            geom = get_selected_gee(self.vectorLayer.currentText())
+            params = {'scale':1000, 'maxPixels': 1e12}
+            if geom: params.update({'geometry': geom[0]})
+            max = res.reduceRegion(ee.Reducer.max(), **params)
+            min = res.reduceRegion(ee.Reducer.min(), **params)
+            if isinstance(image, ee.Image):
+                max = ee.Number(max.get(bands[0]))
+                min = ee.Number(min.get(bands[0]))
+                print(23)
+            else:
+                if geom:
+                    max = max.values().sort().getNumber(-1)
+                    min = min.values().sort().getNumber(0)
+            if geom: vis.update({'max': max.getInfo(), 'min': min.getInfo()})
+            vis.update({'bands': bands})
+        elif self.region.isChecked():
+            scale = self.scaleBox.value()
+            maxPix = float(self.pixBox.text())
+            geom = get_selected_gee(self.vectorLayer.currentText())
+            if not geom: raise GeometryNotFoundError('Feature is not selected in the current vector layer')
+            else: geom = geom[0]
+            if isinstance(image, ee.ImageCollection):
+                raise TypeError('Cannot reduce collection, too many data for output')
+            else:
+                res = image.reduceRegion(reducer, geom, scale, maxPixels=maxPix).getInfo()#dictionary
+                string = ''
+                for key in res:
+                    string += key + ': ' + str(res[key]) + '\n'
+                QtWidgets.QMessageBox.information(self, f'Applied {reducerType} reducer to {gee_name}', string)
+                return
+        else:
+            kernel = eval(f'ee.Kernel.{self.kernelType.currentText()}({self.kernelRadius.value()})')
+            if isinstance(image, ee.ImageCollection):
+                res = image.map(lambda img: img.reduceNeighborhood(reducer, kernel))
+            else:
+                res = image.reduceNeighborhood(reducer, kernel)
+        name = self.layer_name.text()
+        if name: self.geeLayer.addItem(name)
+        self.manager.set_vis(vis)
+        if self.addCheck.isChecked():
+            self.manager.show_and_subscript(res, name)
+        else:
+            self.manager.layers.dump_cache_layer(name, res, vis)
 
 
 class DownloadDialog(QtWidgets.QWidget, DOWNLOAD_CLASS):
@@ -150,7 +341,7 @@ class DownloadDialog(QtWidgets.QWidget, DOWNLOAD_CLASS):
         self.on_dataset_selected(tuple(datasets)[0])
 
         self.num_bands = 3
-        self.bandButtonGroup = set_radio_group(self.radio1, self.radio3, self.set_number_of_bands)
+        self.bandButtonGroup = set_radio_group(self.radio1, self.radio3, func=self.set_number_of_bands)
         self.loadButton.clicked.connect(self.load)
 
     def set_number_of_bands(self, obj):
@@ -198,7 +389,7 @@ class DownloadDialog(QtWidgets.QWidget, DOWNLOAD_CLASS):
         self.manager.set_cloud(cloud)
         self.manager.set_limit(limit)
         self.manager.set_vis(visParams)
-        geom = get_selected_gee()
+        geom = get_selected_gee(iface.activeLayer())
         if geom: geom = geom[0]
         self.manager.import_e(dataset, geom, name)
 
@@ -210,7 +401,7 @@ class ExportDialog(QtWidgets.QWidget, EXPORT_CLASS):
         self.setupUi(self)
         self.exportButton.clicked.connect(self.on_export)
         self.manager = ExportingEE()
-        self.exportButtonGroup = set_radio_group(self.driveRadio, self.assetRadio, self.toggle_mode)
+        self.exportButtonGroup = set_radio_group(self.driveRadio, self.assetRadio, func=self.toggle_mode)
         self.exportButtonGroup.buttonClicked.emit(self.driveRadio)
         self.toCE.clicked.connect(lambda: webbrowser.open('https://code.earthengine.google.com/',
                                                           new=2))
@@ -218,7 +409,7 @@ class ExportDialog(QtWidgets.QWidget, EXPORT_CLASS):
 
     def on_layers_update(self):
         self.layerBox.clear()
-        self.layerBox.addItems(get_gee_names())
+        self.layerBox.addItems(get_gee_names()+self.manager.layers.cache_names())
 
     def toggle_mode(self, obj):
         id = self.exportButtonGroup.id(obj)
@@ -237,7 +428,7 @@ class ExportDialog(QtWidgets.QWidget, EXPORT_CLASS):
         pix = float(self.pixBox.text())
         folder = self.folder.text()
         pyramid = self.pyramidBox.currentText()
-        geom = get_selected_gee()
+        geom = get_selected_gee(iface.activeLayer())
         if geom: geom = geom[0]
         self.manager.export_e(layer, scale, pix, folder=folder, pyramid=pyramid, geometry=geom, dest=self.mode)
 
@@ -277,4 +468,5 @@ class GEEManagerDialog(QtWidgets.QDialog, FORM_CLASS):
         "syncronize information about changing layers between all panels"
         self.export.on_layers_update()
         self.map_algebra.init_bands_list()
+        self.operations.init_combos()
 
