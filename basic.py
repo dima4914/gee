@@ -7,10 +7,12 @@ from qgis.core import *
 from PyQt5 import QtCore, QtWidgets
 import datetime as dt
 import json
+import pickle
 import os
 import zipfile
 import urllib
 import re
+
 
 NUM_TILL_SUCCESS = 3
 
@@ -56,6 +58,8 @@ class LayerManager:
     def __init__(self):
         self.layers = {}
         self.cache = {}
+        iface.projectRead.connect(self.load)
+        iface.newProjectCreated.connect(self.clear)
 
     def subscript_layer(self, layer_name, image, vis={}, qgs_layer=None, info=None):
         if not qgs_layer:
@@ -78,7 +82,9 @@ class LayerManager:
         return res
 
     def remove_layer(self, layer_name):
-        self.layers.pop(layer_name)
+        if layer_name in self.layers:
+            self.layers.pop(layer_name)
+        else: self.cache.pop(layer_name)
 
     def __getitem__(self, index):
         if not self.layers.get(index,''):
@@ -86,11 +92,14 @@ class LayerManager:
                 layer = utils.get_layer_by_name(index)
                 if layer and layer.customProperty('ee-object'):
                     dp  = layer.dataProvider()
-                    obj = dp.ee_object
-                    info = dp.ee_info
-                    vis = json.loads(layer.customProperty('ee-object-vis'))
-                    self.subscript_layer(index, obj, vis, layer, info)
-                    res = self.layers[index]
+                    if hasattr(dp, 'ee_info'):
+                        obj = dp.ee_object
+                        info = dp.ee_info
+                        vis = json.loads(layer.customProperty('ee-object-vis'))
+                        self.subscript_layer(index, obj, vis, layer, info)
+                        res = self.layers[index]
+                    else:
+                        return
                 else:
                     message = 'Layer doesn\'t exist or is not EE layer'
                     raise NameError(message)
@@ -115,7 +124,60 @@ class LayerManager:
     def vis_params(self, layer_name):
         return self[layer_name]['vis']
 
+    def save(self, save_cache=False, proxy_type=None):
+        res = {}
+        layers = {}
+        if proxy_type:
+            for layer in self.layers:
+                if isinstance(self.layers[layer]['obj'], proxy_type):
+                    layers.update({layer: self.layers[layer].copy()})
+        else:
+            for layer in self.layers:
+                layers.update({layer: self.layers[layer].copy()})
+        for layer in layers:
+            layers[layer].pop('qgs_layer')
+        project = QgsProject.instance()
+        try:
+            res.update({'layers': pickle.dumps(layers)})
+        except AttributeError:
+            return
+        if save_cache:
+            cache = {}
+            if proxy_type:
+                for layer in self.cache:
+                    if isinstance(self.cache[layer]['obj'], proxy_type):
+                        cache.update({layer: self.cache[layer].copy()})
+            else:
+                for layer in self.cache:
+                    cache.update({layer: self.cache[layer].copy()})
+            try:
+                res.update({'cache': pickle.dumps(cache)})
+            except AttributeError: return
+        project.setCustomVariables(res)
+        return project.write()
+
+    def load(self):
+        self.clear()
+        project = QgsProject.instance()
+        data = project.customVariables()
+        try:
+            layers = pickle.loads(data['layers']) if 'layers' in data else {}
+            cache = pickle.loads(data['cache']) if 'cache' in data else {}
+            self.layers.update(layers)
+            self.cache.update(cache)
+        except TypeError:
+            pass
+
+    def clear(self):
+        self.layers = {}
+        self.cache = {}
+
+
 _layers = LayerManager()#shared by several classes, needed to be global but is non-importing
+
+
+def get_layer_manager():
+    return _layers
 
 
 class PreprocessingEE:
@@ -225,7 +287,7 @@ class MapAlgebraEE:
             gee_obj = self.layers[i[1]]['obj']
             gee_obj = gee_obj.select(i[2])
             if isinstance(gee_obj, ee.ImageCollection): gee_obj = gee_obj.median()
-            gee_obj = eval(f'{gee_obj}.{i[0]}()')
+            gee_obj = eval(f'gee_obj.{i[0]}()')
             images.append(gee_obj)
             self.exp = re.sub(self.func_pattern, self.prefix+str(s), self.exp,1)
         br = re.findall(self.rb_pattern, self.exp)
@@ -271,6 +333,7 @@ class ExportingEE:
             'description': desc,
             'maxPixels': max_pixels
         }
+        if geometry: settings.update({'region': geometry})
         if dest == 'asset':
             settings.update({'assetId': folder+'/'+desc,
                              'pyramidingPolicy': {'.default': pyramid}})
@@ -278,7 +341,6 @@ class ExportingEE:
         else:
             settings.update({'folder': folder, 'fileFormat': format_,})
             task = ee.batch.Export.image.toDrive(**settings)
-        if geometry: settings.update({'region': geometry})
         task.start = exec_til_success(ProtocolError, NUM_TILL_SUCCESS)(task.start)
         task.start()
         if verbose:
@@ -328,7 +390,12 @@ def qgsgeometry_to_gee(geom, crs="EPSG:4326"):
 def qgsfeature_to_gee(feature, crs="EPSG:4326"):
     geom_ee = qgsgeometry_to_gee(feature.geometry(), crs) if feature.hasGeometry() else None
     field_names = feature.fields().names()
-    values = feature.attributes()
+    raw_values = feature.attributes()
+    values =[]
+    for value in raw_values:
+        if isinstance(value, QtCore.QVariant):
+            value = None
+        values.append(value)
     props = dict(zip(field_names, values))
     if 'id' not in field_names:
         props.update({'id': feature.id()})
@@ -400,12 +467,11 @@ class DownloadTask(QgsTask):
         super().cancel()
 
 
-def add_ziplayer(path, name):
+def add_ziplayer(path, name, shp_name='table.shp'):
     z = zipfile.ZipFile(path, 'r')
     z.extractall()
-    print(5)
     shp_path = os.path.split(path)[0] + os.path.sep
-    vlayer = QgsVectorLayer(shp_path + 'table.shp', name, 'ogr')
+    vlayer = QgsVectorLayer(shp_path + shp_name, name, 'ogr')
     if not vlayer.isValid():
         iface.messageBar().pushMessage('Error', 'Cannot load vector layer',
                                        level=Qgis.Critical, duration=10)

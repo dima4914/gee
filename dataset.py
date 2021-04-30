@@ -65,7 +65,8 @@ gee_dataset = {
         'desc': 'Sentinel-2 is a wide-swath, high-resolution, multi-spectral imaging mission supporting\
          Copernicus Land Monitoring studies, including the monitoring of vegetation, soil and water cover,\
           as well as observation of inland waterways and coastal areas.',
-        'bands': SENTINEL2_1C + ["AOT", "WVP", "SCL", "TCI_R", "TCI_G", "TCI_B", "MSK_CLDPRB", "MSK_SNWPRB"],
+        'bands': ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B11', 'B12',
+                  'AOT', 'WVP', 'SCL', 'TCI_R', 'TCI_G', 'TCI_B', 'QA10', 'QA20', 'QA60'],
         'type': ee.ImageCollection
     },
     'JRC/GSW1_0/GlobalSurfaceWater': {

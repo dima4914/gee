@@ -5,7 +5,7 @@
 [general]
 name=GEE Manager
 qgisMinimumVersion=3.0
-description=This plugin implements user-friendly interface (GUI) to make access to Goggle Earth Engine server easier
+description=This plugin implements programming library and user-friendly interface (GUI) to integrate  QGIS and Google Earth Engine
 version=0.1
 author=Dima Okunev
 email=dima@

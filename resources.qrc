@@ -6,5 +6,6 @@
         <file>icons/ndvi.png</file>
         <file>icons/Transform.png</file>
         <file>icons/settings2.png</file>
+		<file>icons/save.png</file>
     </qresource>
 </RCC>

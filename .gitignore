@@ -1,0 +1,13 @@
+Makefile
+README.html
+README.txt
+__pycache__/
+geeGUI_dialog_base.py
+help/
+i18n/
+operationsGUI.ui
+pb_tool.cfg
+test/
+scripts/
+pylintrc
+plugin_upload.py

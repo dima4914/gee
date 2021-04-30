@@ -13,7 +13,7 @@ def get_vector_names():
 
 
 def get_gee_names():
-    'retrieves names of gee layers in project'
+    'retrieves names of gee layers in project that can be processed'
     names = []
     layers = QgsProject.instance().mapLayers().values()
     for layer in layers:

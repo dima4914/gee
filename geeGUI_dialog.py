@@ -45,6 +45,8 @@ DOWNLOAD_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'downloadGUI.ui'))
 EXPORT_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'exportGUI.ui'))
+SETTINGS_CLASS, _ = uic.loadUiType(os.path.join(
+    os.path.dirname(__file__), 'settingsGUI.ui'))
 
 
 def set_radio_group(*radios, func=None):
@@ -93,6 +95,7 @@ class KernelDialog(QtWidgets.QWidget, KERNEL_CLASS):
         gee_names = get_gee_names()
         for name in gee_names+self.manager.layers.cache_names():
             layer = self.manager.layers[name]
+            if not layer: continue
             obj = layer['obj']
             if isinstance(obj, ee.Image):
                 bands = [band['id'] for band in layer['meta']['bands']]
@@ -153,7 +156,8 @@ class OperationDialog(OperForm):
     def init_combos(self):
         self.geeLayer.clear()
         self.vectorLayer.clear()
-        self.geeLayer.addItems(get_gee_names()+self.manager.layers.cache_names())
+        active_gee = [name for name in get_gee_names() if self.manager.layers[name]]
+        self.geeLayer.addItems(active_gee+self.manager.layers.cache_names())
         self.vectorLayer.addItems(get_vector_names())
 
     @exception_as_gui((GeometryNotFoundError, VectorNotFoundError))
@@ -207,12 +211,10 @@ class OperationDialog(OperForm):
         vis = {}
         if max: visParams.update({'max': max})
         if min: visParams.update({'min': min})
-        print(visParams)
 
         if self.paintRadio.isChecked():
             vis = gee_layer['vis']
             vis.update(visParams)
-            print(vis)
             self.manager.set_vis(vis)
             if self.strokeRadio.isChecked():
                 args.append(2)
@@ -230,7 +232,7 @@ class OperationDialog(OperForm):
             palette = self.palette.text()
             opacity = self.opacitySlide.value()/100
             visParams.update({'opacity': opacity})
-            if palette: visParams.update({'palette': palette})
+            if palette: visParams.update({'palette': ['000000', palette]})
             if self.strokeRadio.isChecked():
                 args.append(2)
                 empty = empty.paint(collection, *args)
@@ -275,7 +277,8 @@ class OperationDialog(OperForm):
         reducer = eval(f'ee.Reducer.{reducerType}()')
         gee_layer = self.manager.layers[gee_name]
         image = gee_layer['obj']
-        vis = gee_layer['vis']
+        vis = {}
+        vis.update(gee_layer['vis'])
         if self.bandsRadio.isChecked():
             res = image.reduce(reducer)
             if isinstance(image, ee.ImageCollection):
@@ -291,7 +294,6 @@ class OperationDialog(OperForm):
             if isinstance(image, ee.Image):
                 max = ee.Number(max.get(bands[0]))
                 min = ee.Number(min.get(bands[0]))
-                print(23)
             else:
                 if geom:
                     max = max.values().sort().getNumber(-1)
@@ -319,6 +321,8 @@ class OperationDialog(OperForm):
                 res = image.map(lambda img: img.reduceNeighborhood(reducer, kernel))
             else:
                 res = image.reduceNeighborhood(reducer, kernel)
+            bands = [band + '_' + reducerType for band in vis['bands']]
+            vis.update({'bands': bands})
         name = self.layer_name.text()
         if name: self.geeLayer.addItem(name)
         self.manager.set_vis(vis)
@@ -409,7 +413,8 @@ class ExportDialog(QtWidgets.QWidget, EXPORT_CLASS):
 
     def on_layers_update(self):
         self.layerBox.clear()
-        self.layerBox.addItems(get_gee_names()+self.manager.layers.cache_names())
+        active_gee = [name for name in get_gee_names() if self.manager.layers[name]]
+        self.layerBox.addItems(active_gee+self.manager.layers.cache_names())
 
     def toggle_mode(self, obj):
         id = self.exportButtonGroup.id(obj)
@@ -433,6 +438,26 @@ class ExportDialog(QtWidgets.QWidget, EXPORT_CLASS):
         self.manager.export_e(layer, scale, pix, folder=folder, pyramid=pyramid, geometry=geom, dest=self.mode)
 
 
+class SettingsDialog(QtWidgets.QWidget, SETTINGS_CLASS):
+    def __init__(self, parent=None):
+        """Constructor."""
+        super(SettingsDialog, self).__init__(parent)
+        self.setupUi(self)
+        self.saveButton.clicked.connect(self.saveLayers)
+        for i, data in enumerate([None, ee.Image, ee.ImageCollection]):
+            self.proxyType.setItemData(i, data)
+
+    def saveLayers(self):
+        proxy_type = self.proxyType.itemData(self.proxyType.currentIndex())
+        lm = get_layer_manager()
+        if lm.save(self.cacheOn.isChecked(), proxy_type):
+            iface.messageBar().pushMessage('Done', 'Layers data was succesfully saved into project',
+                                           level=Qgis.Success, duration=5)
+        else:
+            iface.messageBar().pushMessage('Error', 'Failed to save layers data, probable serialization can\'t be done',
+                                           level=Qgis.Critical, duration=5)
+
+
 class GEEManagerDialog(QtWidgets.QDialog, FORM_CLASS):
     def __init__(self, parent=None):
         """Constructor."""
@@ -451,7 +476,7 @@ class GEEManagerDialog(QtWidgets.QDialog, FORM_CLASS):
             '  Map algebra': self.map_algebra,
             '  Operations': self.operations,
             '  Export': self.export,
-            '  Settings': ExportDialog()
+            '  Settings': SettingsDialog()
         }
         self.stackLayout = QtWidgets.QStackedLayout()
         self.base_window.setLayout(self.stackLayout)
