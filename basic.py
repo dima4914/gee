@@ -7,7 +7,6 @@ from qgis.core import *
 from PyQt5 import QtCore, QtWidgets
 import datetime as dt
 import json
-import pickle
 import os
 import zipfile
 import urllib
@@ -54,6 +53,7 @@ ee.FeatureCollection.getDownloadURL = exec_til_success(ProtocolError, NUM_TILL_S
 ee.Dictionary.getInfo = exec_til_success(ProtocolError, NUM_TILL_SUCCESS)(ee.Dictionary.getInfo)
 ee.Number.getInfo = exec_til_success(ProtocolError, NUM_TILL_SUCCESS)(ee.Number.getInfo)
 
+
 class LayerManager:
     def __init__(self):
         self.layers = {}
@@ -91,15 +91,17 @@ class LayerManager:
             if not self.cache.get(index, ''):
                 layer = utils.get_layer_by_name(index)
                 if layer and layer.customProperty('ee-object'):
-                    dp  = layer.dataProvider()
+                    dp = layer.dataProvider()
                     if hasattr(dp, 'ee_info'):
                         obj = dp.ee_object
-                        info = dp.ee_info
-                        vis = json.loads(layer.customProperty('ee-object-vis'))
-                        self.subscript_layer(index, obj, vis, layer, info)
-                        res = self.layers[index]
                     else:
-                        return
+                        obj = ee.deserializer.fromJSON(layer.customProperty('ee-object'))
+                        if type(obj) == ee.ComputedObject:
+                            return
+                    info = dp.ee_info if hasattr(dp, 'ee_info') else {}
+                    vis = json.loads(layer.customProperty('ee-object-vis'))
+                    self.subscript_layer(index, obj, vis, layer, info)
+                    res = self.layers[index]
                 else:
                     message = 'Layer doesn\'t exist or is not EE layer'
                     raise NameError(message)
@@ -111,7 +113,7 @@ class LayerManager:
 
     def dump_cache_layer(self, layer_name, obj, vis, meta=None):
         if not meta: meta = obj.getInfo()
-        res = {layer_name:{'obj':obj, 'vis': vis, 'meta': meta}}
+        res = {layer_name: {'obj': obj, 'vis': vis, 'meta': meta}}
         self.cache.update(res)
         return res
 
@@ -136,11 +138,11 @@ class LayerManager:
                 layers.update({layer: self.layers[layer].copy()})
         for layer in layers:
             layers[layer].pop('qgs_layer')
+            layers[layer].pop('meta')
+            layers[layer]['type'] = layers[layer]['obj'].__class__.__name__
+            layers[layer]['obj'] = layers[layer]['obj'].serialize()
         project = QgsProject.instance()
-        try:
-            res.update({'layers': pickle.dumps(layers)})
-        except AttributeError:
-            return
+        res.update({'layers': json.dumps(layers)})
         if save_cache:
             cache = {}
             if proxy_type:
@@ -150,23 +152,45 @@ class LayerManager:
             else:
                 for layer in self.cache:
                     cache.update({layer: self.cache[layer].copy()})
-            try:
-                res.update({'cache': pickle.dumps(cache)})
-            except AttributeError: return
+            for layer in cache:
+                cache[layer].pop('meta')
+                cache[layer]['type'] = cache[layer]['obj'].__class__.__name__
+                cache[layer]['obj'] = cache[layer]['obj'].serialize()
+            res.update({'cache': json.dumps(cache)})
         project.setCustomVariables(res)
         return project.write()
 
     def load(self):
-        self.clear()
         project = QgsProject.instance()
         data = project.customVariables()
         try:
-            layers = pickle.loads(data['layers']) if 'layers' in data else {}
-            cache = pickle.loads(data['cache']) if 'cache' in data else {}
-            self.layers.update(layers)
-            self.cache.update(cache)
-        except TypeError:
+            layers = json.loads(data['layers']) if 'layers' in data else {}
+            cache = json.loads(data['cache']) if 'cache' in data else {}
+            for layer in layers:
+                obj = ee.deserializer.fromJSON(layers[layer]['obj'])
+                if type(obj) == ee.ComputedObject:
+                    type_ = eval('ee.' + layers[layer]['type'])
+                    obj = type_(obj)
+                layers[layer]['obj'] = obj
+            for layer in cache:
+                obj = ee.deserializer.fromJSON(cache[layer]['obj'])
+                if type(obj) == ee.ComputedObject:
+                    type_ = eval('ee.' + cache[layer]['type'])
+                    obj = type_(obj)
+                cache[layer]['obj'] = obj
+            self.layers = layers
+            self.cache = cache
+        except RuntimeError:
             pass
+        return True
+
+    def enable_project_sync(self, flag):
+        if flag:
+            iface.projectRead.connect(self.load)
+            iface.newProjectCreated.connect(self.clear)
+        else:
+            iface.projectRead.disconnect(self.load)
+            iface.newProjectCreated.disconnect(self.clear)
 
     def clear(self):
         self.layers = {}
@@ -252,8 +276,8 @@ class PreprocessingEE:
 class MapAlgebraEE:
     def __init__(self, exp=''):
         self.layers = _layers
-        self.rb_pattern = '\(?(\w+)@(\w+)\)?'
-        self.func_pattern = '(\w{3,5})\s?\((\w+)@(\w+)\)?'
+        self.rb_pattern = '(\w+)@(\w+)'
+        self.func_pattern = '(\w{3,5})\s?\((\w+)@(\w+)\)'
         self.exp = exp
         self.prefix = 'VV'
 

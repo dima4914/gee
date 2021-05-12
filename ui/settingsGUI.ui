@@ -118,7 +118,7 @@
      <string>save layers</string>
     </property>
    </widget>
-   <widget class="QPushButton" name="pushButton">
+   <widget class="QPushButton" name="clearButton">
     <property name="geometry">
      <rect>
       <x>160</x>

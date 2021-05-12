@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>API</title>
+		<meta charset='UTF-8'>
+		<style>
+			#header {font-size: 30px; text-align: center; font-weight: bold}
+			body {line-height: 200%; background-color: #F0F6FD}
+			.part {font-size: 20px;}
+		</style>
+	</head>
+	<body>
+		<div id="header">API (basic.py module)</div>
+<p class="part">Constants:</p>
+<p><b>NUM_TILL_SUCCESS</b> – define how many tries of connection there will be to get response from GEE servers
+		<br>
+<p class="part">Classes:</p>
+<p><em>Class</em> <b>LayerManager</b>() – define store for saving information of temporary or project GEE layers. Object automatically cleans the store while changing QGIS project. Retrieving information of certain layer can be done by indexing object with layer name. Every layer is a dict of parameters
+	<p>&nbsp;&nbsp;&nbsp;<b>layers</b> – storage of project GEE layers
+	<p>&nbsp;&nbsp;&nbsp;<b>cache</b> – storage of temporary layers
+	<p>&nbsp;&nbsp;&nbsp;<b>subscript_layer</b>(<i>layer_name, image, vis={}, qgs_layer=None, info=None</i>) – save information of layer in project layers storage. Access to saved information is by using layer_name. Image is proxy-object of GEE – Image or ImageCollection. Vis is a dict with standard GEE visual parameters. If qgs_layer and info are not provided, method will try to automatically find it.
+	<p>&nbsp;&nbsp;&nbsp;<b>remove_layer</b>(<i>layer_name</i>) – remove layer from project store by layer_name, if not found – remove from temporary layers storage
+	<p>&nbsp;&nbsp;&nbsp;<b>__getitem__</b>(<i>index</i>) – search for layer dict by index – name. If not found in project storage, search in temporary layers storage
+	<p>&nbsp;&nbsp;&nbsp;<b>dump_cache_layer</b>(<i>layer_name, obj, vis, meta=None</i>) – save information about layer into temporary layers storage. Obj is proxy-object.
+	<p>&nbsp;&nbsp;&nbsp;<b>names</b>() – return iterator of layers name (keys) in project layers storage
+	<p>&nbsp;&nbsp;&nbsp;<b>cache_names</b>() – return iterator of layers name (keys) in temporary layers storage
+	<p>&nbsp;&nbsp;&nbsp;<b>vis_params</b>(<i>layer_name</i>) – return dict of visual parameters
+	<p>&nbsp;&nbsp;&nbsp;<b>clear</b>() – clear all storages
+	<p>&nbsp;&nbsp;&nbsp;<b>save</b>(<i>save_cache=False, proxy_type=None</i>) – save data of the storage into project context. If save_cache is True then save also temporary layers storage. Proxy_type is type of proxy-objects to save, else save all proxy-objects
+	<p>&nbsp;&nbsp;&nbsp;<b>load</b>() – load data into storages from project context
+	<p>&nbsp;&nbsp;&nbsp;<b>enable_project_sync</b>(<i>flag</i>) – if flag is True, synchronize storages with current project context after it was downloaded</p>
+<br>
+<p><em>Class</em> <b>PreprocessingEE</b>(<i>start_date, end_date, limit=10, cloud = 20</i>) - realize base functions of preparing images for further processing: importing, sorting, filtering, extracting etc. start_date and  end_date  are time interval of raster acquisition, can be date objects of datetime module or string “year-month-day”. Limit is a number of allowed for downloading rasters in collection, cloud is allowed cloud units in metadata of rasters
+	<p>&nbsp;&nbsp;&nbsp;<b>import_e</b>(<i>image_name, geometry=None, layer_name='gee_data'</i>) – create proxy-object based on image_name – name of dataset,  if it is in dataset dict in module dataset.py create designated type of proxy-object else create Image object. Filter collection with set of parameters and with geometry if specified, then call show_and_subscript method
+	<p>&nbsp;&nbsp;&nbsp;<b>show_and_subscript</b>(<i>image, layer_name ='gee_data', info=None</i>) – use proxy-object image, create WMS-layer with GEE data in QGIS  rendered with visualization parameters and save information about downloaded layer in global LayerManager object (project layers store). If proxy is collection, transform it to mosaic for rendering but save original proxy into the store
+	<p>&nbsp;&nbsp;&nbsp;<b>search_property</b>(<i>info, base='CLOUD'</i>) – return name of the first property with substring base, searching in metadata of collection info
+	<p>&nbsp;&nbsp;&nbsp;<b>process_clouding</b>(<i>collection, info=None, name=None</i>) – apply filter to collection to pass rasters with less value than setted for cloudiness and return it. If name property to filter by is not provided, automatically search property with “Cloud” substring
+	<p>&nbsp;&nbsp;&nbsp;<b>set_limit</b>(<i>n</i>) – set limit attribute to filter collection
+	<p>&nbsp;&nbsp;&nbsp;<b>set_cloud</b>(<i>cloud</i>) – set cloud units attribute to filter collection
+	<p>&nbsp;&nbsp;&nbsp;<b>set_date_range</b>(<i>start=None, end=None</i>) – set attributes begin and end day (interval) of acquisition. Start and end can be date objects of module datetime or a string “year-month-day”.
+	<p>&nbsp;&nbsp;&nbsp;<b>set_vis</b>(<i>vis</i>) – set visual parameters attribute for rendering</p>
+<br>
+<p><em>Class</em> <b>MapAlgebraEE</b>(<i>exp=''</i>) – converts QGIS raster expressions to GEE image expressions
+	<p>&nbsp;&nbsp;&nbsp;<b>apply</b>() – make convertation and return transformed proxy-object with description of raster map operations
+	<p>&nbsp;&nbsp;&nbsp;<b>set_expression</b>(<i>exp</i>) – set QGIS raster expression that will be used in apply method</p>
+<br>
+<p><em>Class</em> <b>ExportingEE</b>() – realize simple export downloaded datasets to Asset or Google Drive
+	<p>&nbsp;&nbsp;&nbsp;<b>export_e</b>(<i>layer_name, scale, max_pixels=1e9, format_='GeoTIFF', folder = 'GEE_Data',
+                 pyramid='mean', geometry=None, dest='drive',verbose=True</i>) – export layer with layer_name to dest (‘asset’ or ‘drive’) with parameters . If geometry specified than export only zone of geometry. If verbose is True than show status of export execution in QGIS message bar.</p>
+<br>
+<p class="part">Functions:</p>
+<p><b>exec_til_success</b>(<i>exc, n</i>) – set number n of tries of launching function that can raise exception, return decorator to wrap any function
+<p><b>get_layer_manager</b>() – return global LayerManager object which is used by all classes of processing
+<p><b>qgsgeometry_to_gee</b>(<i>geom, crs="EPSG:4326"</i>) – return geometry proxy-object with coordinates from QgsGeometry geom and crs. All types of geometry can be used
+<p><b>qgsfeature_to_gee</b>(<i>feature, crs="EPSG:4326"</i>) – convert QgsFeature object into Feature proxy-object. Use attributes and geometry of initial feature, set id automatically.
+<p><b>qgsvector_to_gee</b>(<i>layer, expression='', limit=0</i>) – convert vector layer to FeatureCollection proxy-object. Layer can be QgsVectorLayer object or string with name if it was downloaded to the project. Expression is any QGIS expression for filtering initial vector layer. Limit is a number of objects in layer that will be used during conversion
+<p><b>qgsprojection_to_gee</b>(<i>projection</i>) – convert QgsProjection object into Projection proxy-object
+<p><b>geevector_to_qgs</b>(<i>collection, crs='epsg:4326', addToCanvas=True</i>) – create and return QgsVectorLayer object with memory provider based on proxy-object collection data. Limited to 5000 features. If addToCanvas is True then add generated layer to QGIS project
+<p><b>geefeature_to_qgs</b>(<i>feature</i>) – create and return QgsFeature object based on data of proxy-object Feature
+<p><b>download_geeshp</b>(<i>asset, path, addToCanvas=False</i>) – download vector data with name asset  from GEE servers at the background in Shapefile format. Data will be downloaded in the archive so path must also contains name of destination file with zip-format. If addToCanvas is True then upload shp to QGIS project as vector layer
+<p><b>get_selected_gee</b>(<i>layer, n=1</i>) – return list of Geometry proxy-objects generated on selected features in QgsVectorLayer. Layer can be also a string with name of vector layer downloaded in the project. N defines how many selected features in vector layer will be used
+	</body>
+</html>

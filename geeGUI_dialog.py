@@ -38,15 +38,15 @@ from .panels import OperForm
 #sys.path.append(os.path.dirname(__file__))
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
-    os.path.dirname(__file__), 'geeGUI_dialog_base.ui'))
+    os.path.dirname(__file__), 'ui/geeGUI_dialog_base.ui'))
 KERNEL_CLASS, _ = uic.loadUiType(os.path.join(
-    os.path.dirname(__file__), 'kernelGUI.ui'))
+    os.path.dirname(__file__), 'ui/kernelGUI.ui'))
 DOWNLOAD_CLASS, _ = uic.loadUiType(os.path.join(
-    os.path.dirname(__file__), 'downloadGUI.ui'))
+    os.path.dirname(__file__), 'ui/downloadGUI.ui'))
 EXPORT_CLASS, _ = uic.loadUiType(os.path.join(
-    os.path.dirname(__file__), 'exportGUI.ui'))
+    os.path.dirname(__file__), 'ui/exportGUI.ui'))
 SETTINGS_CLASS, _ = uic.loadUiType(os.path.join(
-    os.path.dirname(__file__), 'settingsGUI.ui'))
+    os.path.dirname(__file__), 'ui/settingsGUI.ui'))
 
 
 def set_radio_group(*radios, func=None):
@@ -443,19 +443,25 @@ class SettingsDialog(QtWidgets.QWidget, SETTINGS_CLASS):
         """Constructor."""
         super(SettingsDialog, self).__init__(parent)
         self.setupUi(self)
+        self.lm = get_layer_manager()
+        self.clearButton.clicked.connect(self.clearStore)
         self.saveButton.clicked.connect(self.saveLayers)
         for i, data in enumerate([None, ee.Image, ee.ImageCollection]):
             self.proxyType.setItemData(i, data)
 
     def saveLayers(self):
         proxy_type = self.proxyType.itemData(self.proxyType.currentIndex())
-        lm = get_layer_manager()
-        if lm.save(self.cacheOn.isChecked(), proxy_type):
+        if self.lm.save(self.cacheOn.isChecked(), proxy_type):
             iface.messageBar().pushMessage('Done', 'Layers data was succesfully saved into project',
                                            level=Qgis.Success, duration=5)
         else:
-            iface.messageBar().pushMessage('Error', 'Failed to save layers data, probable serialization can\'t be done',
+            iface.messageBar().pushMessage('Error', 'Failed to save layers data, probably serialization can\'t be done',
                                            level=Qgis.Critical, duration=5)
+
+    def clearStore(self):
+        self.lm.clear()
+        iface.messageBar().pushMessage('Done', 'Store was successfully cleared',
+                                       level=Qgis.Success, duration=5)
 
 
 class GEEManagerDialog(QtWidgets.QDialog, FORM_CLASS):
