@@ -11,7 +11,7 @@ def generate_bands(pattern, num, rjust = 2):
 ASTER = generate_bands('B', 14)
 ASTER[2] = 'B3N'
 
-SENTINEL2_1C = generate_bands('B', 12)
+SENTINEL2_1C = generate_bands('B', 12, 1)
 SENTINEL2_1C.insert(8, 'B8A')
 SENTINEL2_1C = SENTINEL2_1C + ['QA10', 'QA20', 'QA60']
 
@@ -69,7 +69,7 @@ gee_dataset = {
                   'AOT', 'WVP', 'SCL', 'TCI_R', 'TCI_G', 'TCI_B', 'QA10', 'QA20', 'QA60'],
         'type': ee.ImageCollection
     },
-    'JRC/GSW1_0/GlobalSurfaceWater': {
+    'JRC/GSW1_3/GlobalSurfaceWater': {
         'desc': 'This dataset contains maps of the location and temporal\
         distribution of surface water from 1984 to 2015 and provides\
         statistics on the extent and change of those water surfaces',
@@ -104,7 +104,7 @@ gee_dataset = {
         'bands': ['bedrock', 'ice_surface'],
         'type': ee.Image
     },
-    "UMD/hansen/global_forest_change_2019_v1_7": {
+    "UMD/hansen/global_forest_change_2020_v1_8": {
         'desc': 'Results from time-series analysis of Landsat images in characterizing global forest extent and change',
         'bands': ['treecover2000',
                   'loss',
